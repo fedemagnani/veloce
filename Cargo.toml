@@ -2,6 +2,11 @@
 name = "veloce"
 version = "0.1.0"
 edition = "2024"
+description = "Performant data structures in Rust"
+keywords = ["lock-free", "spsc", "channel", "async", "no-std"]
+categories = ["concurrency", "data-structures", "asynchronous"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fedemagnani/veloce"
 
 [features]
 default = []
