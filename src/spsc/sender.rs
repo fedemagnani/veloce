@@ -121,7 +121,7 @@ unsafe impl<T: Send, const N: usize> Send for Sender<T, N> {}
 mod r#async {
     use std::{
         pin::Pin,
-        task::{Context, Poll},
+        task::{Context, Poll, Waker},
     };
 
     use super::*;

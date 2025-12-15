@@ -5,7 +5,7 @@
 //!
 //! ## How It Works
 //!
-//!```
+//!```text
 //!                   tail (producer writes here)
 //!                   ↓
 //! ┌───┬───┬───┬───┬───┬───┬───┬───┐
@@ -36,7 +36,7 @@
 //!
 //! ## Cache Optimization
 //!
-//! Most of the fields of [`Channel`] are cache-padded ([`CachePadded`](crossbeam_utils::CachePadded))
+//! Most of the fields of `Channel` are cache-padded ([`CachePadded`](crossbeam_utils::CachePadded))
 //! to prevent false sharing between producer and consumer threads.
 //!
 //! ## Async Support
@@ -44,11 +44,11 @@
 //! With the `async` feature, [`send()`](Sender::send) and [`recv()`](Receiver::recv)
 //! return futures that poll the underlying lock-free operations. The futures
 //! themselves make no OS calls—whether the OS is involved depends on your runtime
-//!
+
 //! ## Example
 //!
-//!```
-//! use veloce::spsc::channel;
+//!```rust
+//! use veloce::spsc::channel4;
 //!
 //! let (tx, rx) = channel4::<i32>();  // Buffer size must be power of 2
 //!
