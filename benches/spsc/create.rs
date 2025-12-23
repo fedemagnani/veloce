@@ -14,11 +14,15 @@
 //! Each iteration creates a fresh channel. The returned sender/receiver handles
 //! are immediately dropped after creation.
 
-use crate::{BUFFER_SIZE, Bencher, channel, crossbeam_bounded, std_sync_channel};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use std::sync::mpsc::sync_channel as std_sync_channel;
+use test::Bencher;
+use veloce::spsc::channel;
+const BUFFER_SIZE: usize = 1024;
 
 #[bench]
 fn veloce(b: &mut Bencher) {
-    b.iter(|| channel::<i32, BUFFER_SIZE>());
+    b.iter(channel::<i32, BUFFER_SIZE>);
 }
 
 #[bench]

@@ -21,8 +21,13 @@
 //! This benchmark penalizes implementations with expensive blocking operations
 //! and rewards efficient spin-wait or adaptive backoff strategies.
 
-use crate::{Bencher, TOTAL_MESSAGES, channel, crossbeam_bounded, scope, std_sync_channel};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use crossbeam_utils::thread::scope;
+use std::sync::mpsc::sync_channel as std_sync_channel;
+use test::Bencher;
+use veloce::spsc::channel;
 
+const TOTAL_MESSAGES: usize = 100_000;
 const SMALL_BUFFER: usize = 64;
 
 #[bench]

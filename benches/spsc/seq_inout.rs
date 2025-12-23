@@ -18,7 +18,12 @@
 //! This isolates the raw channel operation cost without thread synchronization
 //! overhead or channel allocation. Best-case scenario for cache locality.
 
-use crate::{channel, crossbeam_bounded, std_sync_channel, Bencher, BUFFER_SIZE};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use std::sync::mpsc::sync_channel as std_sync_channel;
+use test::Bencher;
+use veloce::spsc::channel;
+
+const BUFFER_SIZE: usize = 1024;
 
 #[bench]
 fn veloce(b: &mut Bencher) {
@@ -46,4 +51,3 @@ fn std_sync(b: &mut Bencher) {
         rx.recv().unwrap()
     });
 }
-

@@ -19,8 +19,12 @@
 //!
 //! This simulates request-response patterns where channels are short-lived.
 
-use crate::{BUFFER_SIZE, Bencher, channel, crossbeam_bounded, std_sync_channel};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use std::sync::mpsc::sync_channel as std_sync_channel;
+use test::Bencher;
+use veloce::spsc::channel;
 
+const BUFFER_SIZE: usize = 1024;
 #[bench]
 fn veloce(b: &mut Bencher) {
     b.iter(|| {

@@ -34,7 +34,10 @@
 //! `std::sync::mpsc::Receiver` is not `Sync`, so channels must be created
 //! fresh each iteration (including thread spawn), adding significant overhead.
 
-use crate::{Bencher, channel, crossbeam_bounded, scope, test};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use crossbeam_utils::thread::scope;
+use test::Bencher;
+use veloce::spsc::channel;
 
 const PING_PONG_ROUNDS: usize = 10_000;
 

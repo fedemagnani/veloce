@@ -20,7 +20,12 @@
 //! All operations happen on the same thread. This tests raw operation speed
 //! without any synchronization or blocking, simulating batch processing patterns.
 
-use crate::{BUFFER_SIZE, Bencher, channel, crossbeam_bounded, std_sync_channel, test};
+use crossbeam_channel::bounded as crossbeam_bounded;
+use std::sync::mpsc::sync_channel as std_sync_channel;
+use test::Bencher;
+use veloce::spsc::channel;
+
+const BUFFER_SIZE: usize = 1024;
 
 const BURST_SIZE: usize = 512;
 

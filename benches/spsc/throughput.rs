@@ -27,9 +27,14 @@
 //! - `crossbeam`: Uses blocking `send`/`recv` (parks thread when blocked)
 //! - `std_sync`: Uses std's blocking `send`/`recv`
 
-use crate::{
-    BUFFER_SIZE, Bencher, TOTAL_MESSAGES, channel, crossbeam_bounded, scope, std_sync_channel,
-};
+pub use crossbeam_channel::bounded as crossbeam_bounded;
+pub use crossbeam_utils::thread::scope;
+pub use std::sync::mpsc::sync_channel as std_sync_channel;
+pub use test::Bencher;
+pub use veloce::spsc::channel;
+
+pub const BUFFER_SIZE: usize = 1024;
+pub const TOTAL_MESSAGES: usize = 100_000;
 
 #[bench]
 fn veloce_spin(b: &mut Bencher) {
