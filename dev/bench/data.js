@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1766493693192,
+  "lastUpdate": 1766494042524,
   "repoUrl": "https://github.com/fedemagnani/veloce",
   "entries": {
     "Rust std::bench": [
@@ -151,6 +151,158 @@ window.BENCHMARK_DATA = {
             "name": "throughput::veloce_try",
             "value": 1153289.64,
             "range": "± 54932.04",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "fedemagnani",
+            "username": "fedemagnani"
+          },
+          "committer": {
+            "name": "fedemagnani",
+            "username": "fedemagnani"
+          },
+          "id": "fb5913af9b070904db39523294a9a7e34aa671cc",
+          "message": "Benches",
+          "timestamp": "2025-12-22T08:36:16Z",
+          "url": "https://github.com/fedemagnani/veloce/pull/1/commits/fb5913af9b070904db39523294a9a7e34aa671cc"
+        },
+        "date": 1766494041781,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "burst::crossbeam",
+            "value": 13229.97,
+            "range": "± 121.53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "burst::std_sync",
+            "value": 12904.21,
+            "range": "± 98.71",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "burst::veloce",
+            "value": 2021.27,
+            "range": "± 13.86",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "create::crossbeam",
+            "value": 355.97,
+            "range": "± 8.78",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "create::std_sync",
+            "value": 337.68,
+            "range": "± 5.15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "create::veloce",
+            "value": 56.96,
+            "range": "± 0.57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "latency::crossbeam",
+            "value": 5194658.85,
+            "range": "± 4547573.72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "latency::std_sync",
+            "value": 197960982.9,
+            "range": "± 33381615.25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "latency::veloce",
+            "value": 4016441.4,
+            "range": "± 127908.53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "oneshot::crossbeam",
+            "value": 395.16,
+            "range": "± 2.67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "oneshot::std_sync",
+            "value": 371.16,
+            "range": "± 5.88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "oneshot::veloce",
+            "value": 80.3,
+            "range": "± 1.7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "seq_inout::crossbeam",
+            "value": 25.03,
+            "range": "± 0.37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "seq_inout::std_sync",
+            "value": 21.71,
+            "range": "± 0.21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "seq_inout::veloce",
+            "value": 2.09,
+            "range": "± 0.06",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "small_buffer::crossbeam",
+            "value": 17594017.8,
+            "range": "± 3276695.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "small_buffer::std_sync",
+            "value": 10322650.3,
+            "range": "± 25066181.8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "small_buffer::veloce_spin",
+            "value": 514095.3,
+            "range": "± 16936.06",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "throughput::crossbeam",
+            "value": 14127657.4,
+            "range": "± 5107959.97",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "throughput::std_sync",
+            "value": 3636190,
+            "range": "± 2333647.21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "throughput::veloce_spin",
+            "value": 483862.32,
+            "range": "± 30899.73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "throughput::veloce_try",
+            "value": 431562.22,
+            "range": "± 23849.48",
             "unit": "ns/iter"
           }
         ]
