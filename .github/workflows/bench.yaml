@@ -1,12 +1,16 @@
-name: Benchmark
+name: Benchmarks
 
 on:
+  pull_request:
   push:
     branches: [ main ]
-  pull_request:
+
+concurrency:
+  group: bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  benchmark:
+  spsc:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,15 +19,18 @@ jobs:
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Run benchmarks
-        run: cargo bench | tee output.txt
+      - name: Run spsc benchmarks
+        run: cargo bench spsc | tee spsc.txt
 
-      - name: Store benchmark result
+      - name: Publish / Compare benchmarks
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          name: Rust std::bench
+          name: spsc
           tool: cargo
-          output-file-path: output.txt
+          output-file-path: spsc.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
+
+          auto-push: ${{ github.event_name == 'push' }}
+
           comment-always: true
+          fail-on-alert: false
