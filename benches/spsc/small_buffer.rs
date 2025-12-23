@@ -21,7 +21,7 @@
 //! This benchmark penalizes implementations with expensive blocking operations
 //! and rewards efficient spin-wait or adaptive backoff strategies.
 
-use crate::{channel, crossbeam_bounded, scope, std_sync_channel, Bencher, TOTAL_MESSAGES};
+use crate::{Bencher, TOTAL_MESSAGES, channel, crossbeam_bounded, scope, std_sync_channel};
 
 const SMALL_BUFFER: usize = 64;
 
@@ -114,4 +114,3 @@ fn std_sync(b: &mut Bencher) {
     })
     .unwrap();
 }
-
