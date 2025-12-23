@@ -91,7 +91,7 @@ macro_rules! define_size_aliases {
                 #[cfg(feature = "async")]
                 pub type [<RecvFuture $n>]<'a, T> = RecvFuture<'a, T, $n>;
 
-                /// Creates a channel with buffer size $n.
+                /// Creates a channel with specific buffer size .
                 pub fn [<channel $n>]<T>() -> ([<Sender $n>]<T>, [<Receiver $n>]<T>) {
                     channel::<T, $n>()
                 }
