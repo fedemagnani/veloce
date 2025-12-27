@@ -1,0 +1,89 @@
+# Example workflow for external projects using git-bench
+# Copy this file to your project's .github/workflows/ directory
+#
+# Prerequisites:
+# 1. Your project must have benchmarks (cargo bench)
+# 2. GitHub Pages must be enabled (Settings > Pages > Source: Deploy from a branch > gh-pages)
+#
+# The workflow will:
+# - Run your benchmarks on every push to main
+# - Deploy results to GitHub Pages with an interactive dashboard
+# - Compare with previous runs and alert on regressions
+
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install git-bench
+        env:
+          # Pin to a specific version for reproducibility
+          # Check https://github.com/fedemagnani/git-bench/tags for available versions
+          GIT_BENCH_VERSION: "v0.0.1-alpha.3"
+        run: |
+          cargo install --git https://github.com/fedemagnani/git-bench --tag $GIT_BENCH_VERSION git-bench
+          
+          # Build the dashboard (requires wasm target)
+          rustup target add wasm32-unknown-unknown
+          cargo install dioxus-cli
+          
+          # Clone and build dashboard from the same version
+          git clone --depth 1 --branch $GIT_BENCH_VERSION https://github.com/fedemagnani/git-bench /tmp/git-bench
+          cd /tmp/git-bench/crates/dashboard && dx build --release
+          mkdir -p $GITHUB_WORKSPACE/dist
+          cp -r target/dx/git-bench-dashboard/release/web/public/* $GITHUB_WORKSPACE/dist/
+          
+          # Fix paths for GitHub Pages subdirectory deployment
+          find $GITHUB_WORKSPACE/dist -type f \( -name "*.html" -o -name "*.js" \) -exec sed -i 's|"/\./|"./|g' {} \;
+          sed -i 's|<head>|<head><base href="./">|' $GITHUB_WORKSPACE/dist/index.html
+
+      - name: Run benchmarks
+        run: cargo bench 2>&1 | tee benchmark-output.txt
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy results
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git-bench run \
+            --output-file benchmark-output.txt \
+            --name "${{ github.event.repository.name }}" \
+            --github-token "$GITHUB_TOKEN" \
+            --auto-push \
+            --gh-pages-branch gh-pages \
+            --benchmark-data-dir-path dev/bench \
+            --dashboard-dir dist \
+            --alert-threshold "150%"
+          
+          # Dashboard will be available at:
+          # https://<username>.github.io/<repo>/dev/bench/
+
+      - name: Upload benchmark output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-output
+          path: benchmark-output.txt
+          if-no-files-found: ignore
+
