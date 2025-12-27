@@ -5,6 +5,11 @@
 # 1. Your project must have benchmarks (cargo bench)
 # 2. GitHub Pages must be enabled (Settings > Pages > Source: Deploy from a branch > gh-pages)
 #
+# Note on Rust toolchain:
+# - libtest benchmarks (#![feature(test)]) require nightly Rust
+# - Criterion benchmarks work on stable Rust
+# This workflow uses nightly by default to support both.
+#
 # The workflow will:
 # - Run your benchmarks on every push to main
 # - Deploy results to GitHub Pages with an interactive dashboard
@@ -29,7 +34,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Use nightly for libtest benchmarks (#![feature(test)])
+      # Change to @stable if only using Criterion
+      - uses: dtolnay/rust-toolchain@nightly
 
       - name: Install git-bench
         env:
