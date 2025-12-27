@@ -1,11 +1,3 @@
-# Example workflow for external projects using git-bench
-# Copy this file to your project's .github/workflows/ directory
-#
-# Prerequisites:
-# 1. Your project must have benchmarks (cargo bench)
-# 2. GitHub Pages must be enabled (Settings > Pages > Source: Deploy from a branch > gh-pages)
-#
-# Note on Rust toolchain:
 # - libtest benchmarks (#![feature(test)]) require nightly Rust
 # - Criterion benchmarks work on stable Rust
 # This workflow uses nightly by default to support both.
@@ -42,7 +34,7 @@ jobs:
         env:
           # Pin to a specific version for reproducibility
           # Check https://github.com/fedemagnani/git-bench/tags for available versions
-          GIT_BENCH_VERSION: "v0.0.1-alpha.3"
+          GIT_BENCH_VERSION: "v0.0.1-alpha.4"
         run: |
           cargo install --git https://github.com/fedemagnani/git-bench --tag $GIT_BENCH_VERSION git-bench
           
