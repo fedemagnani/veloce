@@ -11,4 +11,4 @@ Performant data structures in Rust
 
 ## Benchmarks
 
-Live benchmarks can be found at https://fedemagnani.github.io/veloce/dev/bench/
+Live benchmarks can be found at [here](https://fedemagnani.github.io/veloce/dev/bench/)
