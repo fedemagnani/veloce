@@ -1,5 +1,5 @@
 {
-  "last_update": "2025-12-27T23:18:47.611524375Z",
+  "last_update": "2025-12-28T00:51:28.484451554Z",
   "entries": {
     "veloce": [
       {
@@ -148,6 +148,155 @@
             "value": 876328.88,
             "unit": "ns/iter",
             "range": "+/- 15876.80"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "id": "bb7c7807a4d7bfdaaea68374da0e0d1e2675eea3",
+          "message": "update-benches",
+          "timestamp": "2025-12-28T00:33:50Z",
+          "url": "https://github.com/fedemagnani/veloce/commit/bb7c7807a4d7bfdaaea68374da0e0d1e2675eea3",
+          "author": {
+            "name": "fedemagnani",
+            "email": "0xdrun@gmail.com",
+            "username": "fedemagnani"
+          }
+        },
+        "date": "2025-12-28T00:51:28.380880645Z",
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "spsc::burst::crossbeam",
+            "value": 9247.77,
+            "unit": "ns/iter",
+            "range": "+/- 83.48"
+          },
+          {
+            "name": "spsc::burst::std_sync",
+            "value": 7815.86,
+            "unit": "ns/iter",
+            "range": "+/- 51.10"
+          },
+          {
+            "name": "spsc::burst::veloce",
+            "value": 950.95,
+            "unit": "ns/iter",
+            "range": "+/- 6.13"
+          },
+          {
+            "name": "spsc::create::crossbeam",
+            "value": 293.89,
+            "unit": "ns/iter",
+            "range": "+/- 3.52"
+          },
+          {
+            "name": "spsc::create::std_sync",
+            "value": 293.42,
+            "unit": "ns/iter",
+            "range": "+/- 2.46"
+          },
+          {
+            "name": "spsc::create::veloce",
+            "value": 46.93,
+            "unit": "ns/iter",
+            "range": "+/- 0.75"
+          },
+          {
+            "name": "spsc::latency::crossbeam",
+            "value": 2579882.4,
+            "unit": "ns/iter",
+            "range": "+/- 238836.41"
+          },
+          {
+            "name": "spsc::latency::std_sync",
+            "value": 218205695.9,
+            "unit": "ns/iter",
+            "range": "+/- 21615776.56"
+          },
+          {
+            "name": "spsc::latency::veloce",
+            "value": 1811567.2,
+            "unit": "ns/iter",
+            "range": "+/- 24569.98"
+          },
+          {
+            "name": "spsc::oneshot::crossbeam",
+            "value": 314.44,
+            "unit": "ns/iter",
+            "range": "+/- 6.07"
+          },
+          {
+            "name": "spsc::oneshot::std_sync",
+            "value": 303.68,
+            "unit": "ns/iter",
+            "range": "+/- 6.54"
+          },
+          {
+            "name": "spsc::oneshot::veloce",
+            "value": 54.17,
+            "unit": "ns/iter",
+            "range": "+/- 4.26"
+          },
+          {
+            "name": "spsc::seq_inout::crossbeam",
+            "value": 17.42,
+            "unit": "ns/iter",
+            "range": "+/- 0.15"
+          },
+          {
+            "name": "spsc::seq_inout::std_sync",
+            "value": 15.25,
+            "unit": "ns/iter",
+            "range": "+/- 0.30"
+          },
+          {
+            "name": "spsc::seq_inout::veloce",
+            "value": 1.62,
+            "unit": "ns/iter",
+            "range": "+/- 0.01"
+          },
+          {
+            "name": "spsc::small_buffer::crossbeam",
+            "value": 6992188.15,
+            "unit": "ns/iter",
+            "range": "+/- 191414.86"
+          },
+          {
+            "name": "spsc::small_buffer::std_sync",
+            "value": 7801897.0,
+            "unit": "ns/iter",
+            "range": "+/- 24881415.04"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_spin",
+            "value": 1037510.75,
+            "unit": "ns/iter",
+            "range": "+/- 100074.75"
+          },
+          {
+            "name": "spsc::throughput::crossbeam",
+            "value": 5034752.5,
+            "unit": "ns/iter",
+            "range": "+/- 758998.00"
+          },
+          {
+            "name": "spsc::throughput::std_sync",
+            "value": 1296860.57,
+            "unit": "ns/iter",
+            "range": "+/- 29156.20"
+          },
+          {
+            "name": "spsc::throughput::veloce_spin",
+            "value": 1325909.16,
+            "unit": "ns/iter",
+            "range": "+/- 92114.76"
+          },
+          {
+            "name": "spsc::throughput::veloce_try",
+            "value": 1335524.39,
+            "unit": "ns/iter",
+            "range": "+/- 113850.58"
           }
         ]
       }
