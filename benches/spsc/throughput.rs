@@ -1,28 +1,13 @@
-//! # Throughput — High-Frequency Trading / Streaming Pipeline
+//! Multi-threaded continuous streaming: producer and consumer run in parallel.
 //!
-//! **Real-world scenario**: Market data feed where a producer streams prices
-//! as fast as possible and consumer must keep up.
+//! Measures sustained throughput when both threads are CPU-bound and the consumer
+//! does minimal work per message. Tests how efficiently the channel handles
+//! concurrent access and backpressure.
 //!
-//! ```text
-//! ┌─────────────┐         ┌─────────────┐
-//! │  Producer   │ ──────► │  Consumer   │
-//! │ (prices)    │  100K   │ (trading)   │
-//! │ Thread 1    │  msgs   │ Thread 2    │
-//! └─────────────┘         └─────────────┘
-//! ```
-//!
-//! **Key constraint**: Consumer does minimal work per message (just forwarding).
-//! Both threads are CPU-bound and always ready to work.
-//!
-//! ## Trade-offs
-//!
-//! | Method | Behavior | Best when |
-//! |--------|----------|-----------|
-//! | `recv_spin` | Immediate feedback to producer | Consumer is fast (this benchmark) |
-//! | `drain()` | Batched feedback, producer may stall | Consumer does real work (see `slow_consumer`) |
-//!
-//! **Note**: `drain()` is slower here because the fast consumer causes producer stalls.
-//! See `slow_consumer` benchmark for scenarios where `drain()` wins.
+//! Real-world scenarios:
+//! - Market data feed streaming prices to a trading engine
+//! - Log aggregation pipeline forwarding events
+//! - Video frame handoff between decoder and renderer
 
 pub use crossbeam_channel::bounded as crossbeam_bounded;
 pub use crossbeam_utils::thread::scope;

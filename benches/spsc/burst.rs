@@ -1,24 +1,13 @@
-//! # Burst — File Import / Log Flushing
+//! Single-threaded batch processing: fill buffer, then drain completely.
 //!
-//! **Real-world scenario**: Reading a batch of records from a file, then processing them.
-//! Or: collecting log entries, then flushing to disk.
+//! Measures raw channel throughput without cross-thread synchronization.
+//! Producer and consumer run sequentially on the same thread.
 //!
-//! ```text
-//! ┌──────────────────────────────────────────────────────────────┐
-//! │  1. Read 512 records from CSV    →  send to channel          │
-//! │  2. Process all 512 records      ←  recv from channel        │
-//! │  3. Repeat                                                   │
-//! └──────────────────────────────────────────────────────────────┘
-//! ```
+//! Real-world scenarios:
+//! - Reading records from a file, then processing the batch
+//! - Collecting log entries, then flushing to disk
+//! - ETL pipelines with staged processing
 //!
-//! **Single-threaded**: No producer waiting for feedback — pure throughput test.
-//!
-//! ## When to use each approach
-//!
-//! | Method | Best for |
-//! |--------|----------|
-//! | `drain()` | Batch processing (file I/O, log flush) — **40% faster** |
-//! | `try_recv()` | When you need item-by-item control |
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;

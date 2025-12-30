@@ -1,26 +1,12 @@
-//! # Oneshot — Futures / Promises / Task Results
+//! Oneshot pattern: create channel, send one message, receive, discard.
 //!
-//! **Real-world scenario**: Spawning an async task and waiting for its result.
-//! Channel is created, used once, then discarded.
+//! Measures total cost including channel creation and teardown. Relevant when
+//! channels are created frequently and used only once.
 //!
-//! ```text
-//! let (tx, rx) = channel();
-//! spawn(async move {
-//!     let result = compute_something().await;
-//!     tx.send(result);           // ← one send
-//! });
-//! let result = rx.recv();        // ← one recv
-//! // channel dropped
-//! ```
-//!
-//! **What matters**: Total cost including allocation. If you're creating
-//! thousands of oneshot channels per second, this benchmark matters.
-//!
-//! ## Trade-offs
-//!
-//! veloce is **~15× faster** than crossbeam/std here because:
-//! - Compile-time buffer size (no runtime allocation decisions)
-//! - Simpler internal structure (SPSC vs MPMC)
+//! Real-world scenarios:
+//! - Async task result delivery (futures/promises)
+//! - Per-request response channels
+//! - Thread spawn with result callback
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;

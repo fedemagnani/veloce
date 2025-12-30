@@ -1,32 +1,14 @@
-//! # Slow Consumer — JSON Parsing / Database Writes / Crypto
+//! Consumer-bottlenecked pipeline: consumer does real work per message.
 //!
-//! **Real-world scenario**: Consumer does actual work per message — parsing JSON,
-//! writing to database, computing hashes, or any CPU-intensive processing.
+//! Simulates workloads where the consumer performs CPU-intensive processing
+//! (parsing, validation, computation) rather than just forwarding. The producer
+//! stays ahead of the consumer, making backpressure irrelevant.
 //!
-//! ```text
-//! ┌─────────────┐               ┌─────────────────────────────┐
-//! │  Producer   │ ────────────► │  Consumer                   │
-//! │  (fast)     │               │  parse JSON (~50ns)         │
-//! │             │               │  validate (~100ns)          │
-//! │             │               │  write to DB (~500ns)       │
-//! └─────────────┘               └─────────────────────────────┘
-//! ```
-//!
-//! **Key insight**: When consumer is the bottleneck, producer stalls don't matter.
-//! The producer stays ahead anyway, and `drain()` saves atomic operations.
-//!
-//! ## Results Summary
-//!
-//! | Work per item | `drain()` vs others |
-//! |---------------|---------------------|
-//! | ~50ns (light) | **9× faster** than `recv_spin` |
-//! | ~200ns (medium) | **2× faster** than `recv_spin` |
-//!
-//! ## When to use `drain()`
-//!
-//! ✅ Consumer does real work (parsing, I/O, computation)
-//! ✅ Consumer is the bottleneck
-//! ❌ Consumer is trivial (just forwarding) — use `recv_spin`
+//! Real-world scenarios:
+//! - JSON/XML parsing pipelines
+//! - Database write batching
+//! - Cryptographic hash computation
+//! - Image/video frame processing
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;

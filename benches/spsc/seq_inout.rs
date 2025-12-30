@@ -1,27 +1,13 @@
-//! # Sequential In/Out — Raw Operation Cost
+//! Single-threaded send/receive: measure raw per-operation cost.
 //!
-//! **Real-world scenario**: Actor model where a single thread owns both ends
-//! of the channel. Measures the absolute minimum overhead per operation.
+//! Producer and consumer are the same thread, so there is no cross-thread
+//! synchronization. Establishes the absolute minimum overhead baseline.
+//! If your real workload is slower than this, the channel is not your bottleneck.
 //!
-//! ```text
-//! ┌─────────────────────────────────────────┐
-//! │           Same Thread                   │
-//! │  send(msg) ──► [buffer] ──► recv()      │
-//! │                                         │
-//! │  No cross-thread sync needed            │
-//! │  Best-case cache locality               │
-//! └─────────────────────────────────────────┘
-//! ```
-//!
-//! **Use case**: Establishing a baseline. If your real workload is slower
-//! than this, the channel isn't your bottleneck.
-//!
-//! ## Variants
-//!
-//! | Benchmark | What it measures |
-//! |-----------|------------------|
-//! | `veloce` | Single send + recv (~1.7ns) |
-//! | `veloce_batch` | 64 items with drain (~112ns total, ~1.75ns/item) |
+//! Real-world scenarios:
+//! - Actor model with single-threaded mailbox
+//! - Event loop with internal message queue
+//! - Testing and benchmarking infrastructure
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;

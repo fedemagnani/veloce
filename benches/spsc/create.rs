@@ -1,23 +1,7 @@
-//! # Create — Channel Allocation Cost
+//! Channel creation overhead: measure allocation and initialization cost.
 //!
-//! **Real-world scenario**: Connection pools, per-request channels, or any
-//! pattern where channels are created frequently.
-//!
-//! ```text
-//! for request in requests {
-//!     let (tx, rx) = channel();    // ← How fast is this?
-//!     handle(request, tx, rx);
-//! }
-//! ```
-//!
-//! **What matters**: If you're creating channels in a hot loop, allocation
-//! cost dominates. veloce is **~15× faster** than alternatives.
-//!
-//! ## Why veloce is faster
-//!
-//! - **Compile-time size**: Buffer size is a const generic, no runtime decisions
-//! - **Stack-friendly**: Small channels can avoid heap allocation entirely
-//! - **Minimal bookkeeping**: SPSC needs less internal state than MPMC
+//! Tests how fast new channels can be created. Relevant when channels are
+//! created frequently in hot paths.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;

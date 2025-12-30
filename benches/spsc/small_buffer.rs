@@ -1,27 +1,13 @@
-//! # Small Buffer — Memory-Constrained / Embedded Systems
+//! Throughput with minimal buffer: stress-test backpressure handling.
 //!
-//! **Real-world scenario**: IoT device or embedded system with limited RAM.
-//! Only 64 message slots available — producer frequently waits for space.
+//! Uses a small 64-slot buffer where the producer frequently outruns the
+//! consumer. Tests how efficiently the channel handles buffer-full conditions
+//! and producer stalls.
 //!
-//! ```text
-//! ┌─────────────┐    [64 slots]    ┌─────────────┐
-//! │  Sensor     │ ──────────────►  │  Processor  │
-//! │  (fast)     │   often full!    │  (slower)   │
-//! └─────────────┘                  └─────────────┘
-//! ```
-//!
-//! **Key challenge**: Producer outruns consumer → frequent backpressure.
-//! How efficiently can we handle "buffer full" situations?
-//!
-//! ## Trade-offs
-//!
-//! | Method | Behavior |
-//! |--------|----------|
-//! | `recv_spin` | Frees slots immediately → producer unblocks faster |
-//! | `drain()` | Delays freeing slots → more producer stalls |
-//!
-//! **Note**: `drain()` is slower here due to amplified backpressure.
-//! With only 64 slots, delayed feedback hurts more than with 1024 slots.
+//! Real-world scenarios:
+//! - Embedded systems with limited RAM
+//! - IoT sensor pipelines with constrained memory
+//! - Rate-limited APIs with small request queues
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;

@@ -1,29 +1,15 @@
-//! # Latency — RPC / Request-Response
+//! Ping-pong latency: measure round-trip time for request-response patterns.
 //!
-//! **Real-world scenario**: A service handling requests where each request
-//! must complete before the next one starts. Like a database query or RPC call.
+//! Each iteration sends a message and waits for a response before proceeding.
+//! Measures single-message latency rather than throughput. Critical for
+//! latency-sensitive applications.
 //!
-//! ```text
-//!   Client                      Server
-//!     │                           │
-//!     ├──── request ────────────► │
-//!     │                           ├── process
-//!     │ ◄──── response ────────── │
-//!     │                           │
-//!   (wait for response before next request)
-//! ```
-//!
-//! **What matters here**: Round-trip latency, not throughput.
-//! A 1μs improvement per request = 1 second saved over 1M requests.
-//!
-//! ## Why this matters
-//!
-//! - Database connection pools
-//! - Microservice communication
-//! - Game server tick synchronization
+//! Real-world scenarios:
+//! - Database query round-trips
+//! - RPC and microservice communication
 //! - Any request-response protocol
 //!
-//! **Note**: std creates fresh channels each iteration (can't share Receiver across threads),
+//! Note: std creates fresh channels each iteration due to API constraints,
 //! so its numbers include allocation overhead.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
