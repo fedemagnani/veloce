@@ -101,10 +101,55 @@ impl<T, const N: usize> Receiver<T, N> {
         self.cursors().remaining()
     }
 
-    pub fn drain(&self) -> Drain<'_, T, N> {
-        let cursors = self.cursors();
+    /// Drains up to `max` available items from the channel.
+    ///
+    /// Returns an iterator that yields `min(max, available)` items. The `&mut self`
+    /// borrow prevents concurrent access to the receiver until the `Drain` is dropped.
+    ///
+    /// # Performance
+    ///
+    /// Synchronization is batched: one `Acquire` load at construction, one `Release`
+    /// store on drop. This is faster than calling [`try_recv()`](Self::try_recv) in a
+    /// loop when processing multiple items.
+    ///
+    /// The trade-off: the producer won't see freed slots until the `Drain` drops.
+    ///
+    /// # Behavior
+    ///
+    /// - Yields only items available at construction (snapshot semantics)
+    /// - Does not signal disconnection — check [`is_closed()`](Self::is_closed) after
+    /// - Panic-safe: consumed items are committed even if iteration panics
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// loop {
+    ///     for msg in rx.drain(256) {
+    ///         process(msg);
+    ///     }
+    ///     if rx.is_closed() {
+    ///         break;
+    ///     }
+    ///     std::hint::spin_loop();
+    /// }
+    /// ```
+    #[inline]
+    pub fn drain(&mut self, max: usize) -> Drain<'_, T, N> {
+        let mut cursors = self.cursors();
+        let original_head = cursors.head;
 
-        Drain { rx: self, cursors }
+        // Clamp tail so we yield at most `max` items.
+        // Compare counts (not raw sequence numbers) to handle wrap-around.
+        let available = cursors.remaining();
+        if max < available {
+            cursors.tail = original_head.wrapping_add(max);
+        }
+
+        Drain {
+            rx: self,
+            original_head,
+            cursors,
+        }
     }
 
     /// Returns the `head` and `tail` of the channel.
@@ -140,21 +185,48 @@ impl<T, const N: usize> Drop for Receiver<T, N> {
 unsafe impl<T: Send, const N: usize> Sync for Receiver<T, N> {}
 unsafe impl<T: Send, const N: usize> Send for Receiver<T, N> {}
 
+/// Draining iterator created by [`Receiver::drain()`].
+///
+/// Reads items from `[original_head, tail)` without per-item synchronization.
+/// On drop, commits all consumed items with a single `Release` store.
 pub struct Drain<'a, T, const N: usize> {
-    rx: &'a Receiver<T, N>,
+    rx: &'a mut Receiver<T, N>,
+    /// Head at construction; used to detect if anything was consumed.
+    original_head: usize,
+    /// `head` advances during iteration; `tail` is fixed at construction.
     cursors: Cursors,
 }
 
 impl<T, const N: usize> Drain<'_, T, N> {
-    /// Updates the real head with the ephemeral head with [`Ordering::Release`]
-    fn commit(&self) {
-        let head = self.cursors.head;
-        self.rx.inner.head.store(head, Ordering::Release);
+    /// Writes the current head back to the channel (Release).
+    /// Skipped if nothing was consumed.
+    #[inline]
+    fn commit_head(&self) {
+        if self.original_head != self.cursors.head {
+            self.rx
+                .inner
+                .head
+                .store(self.cursors.head, Ordering::Release);
+        }
+    }
+
+    /// Returns `true` if the sender has dropped.
+    #[inline]
+    pub fn is_closed(&self) -> bool {
+        self.rx.is_closed()
+    }
+
+    /// Returns how many items are left in this drain.
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        self.cursors.remaining()
     }
 }
 
 impl<T, const N: usize> Iterator for Drain<'_, T, N> {
     type Item = T;
+
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursors.is_empty() {
             return None;
@@ -162,14 +234,16 @@ impl<T, const N: usize> Iterator for Drain<'_, T, N> {
 
         let head = self.cursors.head;
 
+        // Safety: head < tail, so slot is initialized. The Acquire on tail
+        // at construction synchronized with the producer's Release store.
         let out = unsafe { self.rx.read(head) };
 
-        // Update the ephemeral head
+        // Update ephemeral head (real head is updated on `drop`)
         self.cursors.head += 1;
-
         Some(out)
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let r = self.cursors.remaining();
         (r, Some(r))
@@ -180,7 +254,7 @@ impl<T, const N: usize> ExactSizeIterator for Drain<'_, T, N> {}
 
 impl<T, const N: usize> Drop for Drain<'_, T, N> {
     fn drop(&mut self) {
-        self.commit();
+        self.commit_head();
     }
 }
 

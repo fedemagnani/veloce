@@ -66,9 +66,9 @@ mod sender;
 
 use channel::Channel;
 pub use error::*;
-pub use receiver::Receiver;
 #[cfg(feature = "async")]
 pub use receiver::RecvFuture;
+pub use receiver::{Drain, Receiver};
 #[cfg(feature = "async")]
 pub use sender::SendFuture;
 pub use sender::Sender;
@@ -76,6 +76,9 @@ pub fn channel<T, const N: usize>() -> (Sender<T, N>, Receiver<T, N>) {
     Channel::default().split()
 }
 
+/// Snapshot of head and tail sequence numbers.
+///
+/// Sequence numbers are unbounded and wrap around; use `wrapping_sub` for distance.
 #[derive(Clone, Copy)]
 pub struct Cursors {
     pub head: usize,
@@ -83,10 +86,14 @@ pub struct Cursors {
 }
 
 impl Cursors {
+    /// Number of items in `[head, tail)`.
+    #[inline]
     pub fn remaining(&self) -> usize {
         self.tail.wrapping_sub(self.head)
     }
 
+    /// True if `head == tail` (no items).
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.head == self.tail
     }
@@ -242,5 +249,154 @@ mod tests {
         }
 
         handle.await.unwrap();
+    }
+
+    #[test]
+    fn test_drain_all() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![0, 1, 2, 3, 4]);
+        assert!(rx.is_empty());
+    }
+
+    #[test]
+    fn test_drain_with_max() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        // Drain only 3 of 5
+        let items: Vec<_> = rx.drain(3).collect();
+        assert_eq!(items, vec![0, 1, 2]);
+        assert_eq!(rx.len(), 2);
+
+        // Drain remaining
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![3, 4]);
+    }
+
+    #[test]
+    fn test_drain_empty() {
+        let (_tx, mut rx) = channel::<i32, 8>();
+        let items: Vec<_> = rx.drain(100).collect();
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_drain_partial_consume() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        // Consume only 2 items via early break
+        {
+            let mut drain = rx.drain(usize::MAX);
+            assert_eq!(drain.next(), Some(0));
+            assert_eq!(drain.next(), Some(1));
+            // drop drain here - should commit 2 items
+        }
+
+        // Remaining 3 items should still be there
+        assert_eq!(rx.len(), 3);
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn test_drain_remaining() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        let mut drain = rx.drain(usize::MAX);
+        assert_eq!(drain.remaining(), 5);
+        assert_eq!(drain.len(), 5); // ExactSizeIterator
+
+        drain.next();
+        assert_eq!(drain.remaining(), 4);
+
+        drain.next();
+        drain.next();
+        assert_eq!(drain.remaining(), 2);
+    }
+
+    #[test]
+    fn test_drain_after_sender_dropped() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+        tx.try_send(2).unwrap();
+        drop(tx);
+
+        assert!(rx.is_closed());
+
+        // Should still drain buffered items
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_drain_non_copy_types() {
+        let (tx, mut rx) = channel::<String, 4>();
+        tx.try_send("hello".into()).unwrap();
+        tx.try_send("world".into()).unwrap();
+
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_drain_multiple_rounds() {
+        let (tx, mut rx) = channel::<i32, 4>();
+
+        // Round 1
+        tx.try_send(1).unwrap();
+        tx.try_send(2).unwrap();
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![1, 2]);
+
+        // Round 2 - buffer slots should be reusable
+        tx.try_send(3).unwrap();
+        tx.try_send(4).unwrap();
+        tx.try_send(5).unwrap();
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn test_drain_max_zero() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+
+        // max=0 should yield nothing
+        let items: Vec<_> = rx.drain(0).collect();
+        assert!(items.is_empty());
+
+        // Item should still be there
+        assert_eq!(rx.len(), 1);
+    }
+
+    #[test]
+    fn test_drain_is_closed() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+
+        {
+            let drain = rx.drain(usize::MAX);
+            assert!(!drain.is_closed());
+        }
+
+        drop(tx);
+
+        {
+            let drain = rx.drain(usize::MAX);
+            assert!(drain.is_closed());
+        }
     }
 }
