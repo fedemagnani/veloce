@@ -4,6 +4,8 @@
 //! created frequently in hot paths.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -22,4 +24,14 @@ fn crossbeam(b: &mut Bencher) {
 #[bench]
 fn std_sync(b: &mut Bencher) {
     b.iter(|| std_sync_channel::<i32>(BUFFER_SIZE));
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    b.iter(|| flume_bounded::<i32>(BUFFER_SIZE));
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    b.iter(|| kanal_bounded::<i32>(BUFFER_SIZE));
 }

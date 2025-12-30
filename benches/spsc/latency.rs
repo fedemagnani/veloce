@@ -14,6 +14,8 @@
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use test::Bencher;
 use veloce::spsc::channel;
 
@@ -112,4 +114,70 @@ fn std_sync(b: &mut Bencher) {
 
         handle.join().unwrap();
     });
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    let (tx1, rx1) = flume_bounded::<i32>(2);
+    let (tx2, rx2) = flume_bounded::<i32>(2);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for _ in 0..PING_PONG_ROUNDS {
+                    let v = rx1.recv().unwrap();
+                    tx2.send(v).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for i in 0..PING_PONG_ROUNDS {
+                tx1.send(i as i32).unwrap();
+                test::black_box(rx2.recv().unwrap());
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    let (tx1, rx1) = kanal_bounded::<i32>(2);
+    let (tx2, rx2) = kanal_bounded::<i32>(2);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for _ in 0..PING_PONG_ROUNDS {
+                    let v = rx1.recv().unwrap();
+                    tx2.send(v).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for i in 0..PING_PONG_ROUNDS {
+                tx1.send(i as i32).unwrap();
+                test::black_box(rx2.recv().unwrap());
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
 }

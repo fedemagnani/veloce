@@ -11,6 +11,8 @@
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -125,6 +127,66 @@ fn crossbeam(b: &mut Bencher) {
 #[bench]
 fn std_sync(b: &mut Bencher) {
     let (tx, rx) = std_sync_channel::<i32>(SMALL_BUFFER);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for _ in 0..TOTAL_MESSAGES {
+                rx.recv().unwrap();
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    let (tx, rx) = flume_bounded::<i32>(SMALL_BUFFER);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for _ in 0..TOTAL_MESSAGES {
+                rx.recv().unwrap();
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    let (tx, rx) = kanal_bounded::<i32>(SMALL_BUFFER);
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);

@@ -10,6 +10,8 @@
 //! - Testing and benchmarking infrastructure
 
 use crossbeam_channel::bounded as crossbeam_bounded;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -53,6 +55,24 @@ fn crossbeam(b: &mut Bencher) {
 #[bench]
 fn std_sync(b: &mut Bencher) {
     let (tx, rx) = std_sync_channel::<i32>(BUFFER_SIZE);
+    b.iter(|| {
+        tx.send(42).unwrap();
+        rx.recv().unwrap()
+    });
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    let (tx, rx) = flume_bounded::<i32>(BUFFER_SIZE);
+    b.iter(|| {
+        tx.send(42).unwrap();
+        rx.recv().unwrap()
+    });
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    let (tx, rx) = kanal_bounded::<i32>(BUFFER_SIZE);
     b.iter(|| {
         tx.send(42).unwrap();
         rx.recv().unwrap()
