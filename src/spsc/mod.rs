@@ -76,6 +76,22 @@ pub fn channel<T, const N: usize>() -> (Sender<T, N>, Receiver<T, N>) {
     Channel::default().split()
 }
 
+#[derive(Clone, Copy)]
+pub struct Cursors {
+    pub head: usize,
+    pub tail: usize,
+}
+
+impl Cursors {
+    pub fn remaining(&self) -> usize {
+        self.tail.wrapping_sub(self.head)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.head == self.tail
+    }
+}
+
 /// Generates type aliases for common buffer sizes.
 ///
 /// Creates types like `Sender2<T>`, `channel16<T>`, `Receiver64<T>`, etc.
