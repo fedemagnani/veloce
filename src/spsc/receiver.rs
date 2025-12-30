@@ -112,7 +112,10 @@ impl<T, const N: usize> Receiver<T, N> {
     /// store on drop. This is faster than calling [`try_recv()`](Self::try_recv) in a
     /// loop when processing multiple items.
     ///
-    /// The trade-off: the producer won't see freed slots until the `Drain` drops.
+    /// The trade-off: the producer won't see freed slots until the `Drain` drops. This
+    /// could cause some backpressure if the producer is particularly spammy and [`Drain`]
+    /// lives for too long (for example, if the consumer is slow in processing updates)
+    ///
     ///
     /// # Behavior
     ///

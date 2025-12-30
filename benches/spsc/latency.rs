@@ -1,38 +1,30 @@
-//! Ping-Pong Latency Benchmarks
+//! # Latency — RPC / Request-Response
 //!
-//! Measures round-trip latency between two threads exchanging messages
-//! in a strict request-response pattern.
-//!
-//! ## What is measured
-//!
-//! - Single-message round-trip latency
-//! - Thread wakeup latency (time for sleeping thread to resume)
-//! - Cross-core cache line transfer time
-//! - Synchronization primitive efficiency
-//!
-//! ## Methodology
-//!
-//! Two channels are created (A→B and B→A) with minimal buffer size (2 slots):
+//! **Real-world scenario**: A service handling requests where each request
+//! must complete before the next one starts. Like a database query or RPC call.
 //!
 //! ```text
-//!   Thread 1 (Ping)          Thread 2 (Pong)
-//!        │                        │
-//!        ├─── send(v) ──────────► │
-//!        │                        ├─── recv()
-//!        │                        ├─── send(v)
-//!        │ ◄──────────────────────┤
-//!        ├─── recv()              │
-//!        │                        │
-//!       (repeat 10,000 times)
+//!   Client                      Server
+//!     │                           │
+//!     ├──── request ────────────► │
+//!     │                           ├── process
+//!     │ ◄──── response ────────── │
+//!     │                           │
+//!   (wait for response before next request)
 //! ```
 //!
-//! Each iteration performs 10,000 round-trips. The benchmark measures total
-//! time for all round-trips, emphasizing wakeup latency over throughput.
+//! **What matters here**: Round-trip latency, not throughput.
+//! A 1μs improvement per request = 1 second saved over 1M requests.
 //!
-//! ## Note on std
+//! ## Why this matters
 //!
-//! `std::sync::mpsc::Receiver` is not `Sync`, so channels must be created
-//! fresh each iteration (including thread spawn), adding significant overhead.
+//! - Database connection pools
+//! - Microservice communication
+//! - Game server tick synchronization
+//! - Any request-response protocol
+//!
+//! **Note**: std creates fresh channels each iteration (can't share Receiver across threads),
+//! so its numbers include allocation overhead.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;

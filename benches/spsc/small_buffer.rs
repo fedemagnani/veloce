@@ -1,25 +1,27 @@
-//! Small Buffer Throughput Benchmarks
+//! # Small Buffer — Memory-Constrained / Embedded Systems
 //!
-//! Measures throughput with a small buffer (64 slots) to stress-test
-//! backpressure handling when the producer frequently outruns the consumer.
+//! **Real-world scenario**: IoT device or embedded system with limited RAM.
+//! Only 64 message slots available — producer frequently waits for space.
 //!
-//! ## What is measured
+//! ```text
+//! ┌─────────────┐    [64 slots]    ┌─────────────┐
+//! │  Sensor     │ ──────────────►  │  Processor  │
+//! │  (fast)     │   often full!    │  (slower)   │
+//! └─────────────┘                  └─────────────┘
+//! ```
 //!
-//! - Throughput under high contention (buffer frequently full)
-//! - Cost of blocking/spinning when producer must wait for space
-//! - Efficiency of wakeup mechanisms when space becomes available
+//! **Key challenge**: Producer outruns consumer → frequent backpressure.
+//! How efficiently can we handle "buffer full" situations?
 //!
-//! ## Methodology
+//! ## Trade-offs
 //!
-//! Same as [`throughput`](super::throughput) benchmarks, but with `SMALL_BUFFER = 64`:
+//! | Method | Behavior |
+//! |--------|----------|
+//! | `recv_spin` | Frees slots immediately → producer unblocks faster |
+//! | `drain()` | Delays freeing slots → more producer stalls |
 //!
-//! 1. Channel with only 64 slots is created once
-//! 2. Producer thread sends [`TOTAL_MESSAGES`](crate::TOTAL_MESSAGES) (100,000) values
-//! 3. Consumer receives all values
-//! 4. Producer will block/spin ~1,500 times waiting for buffer space
-//!
-//! This benchmark penalizes implementations with expensive blocking operations
-//! and rewards efficient spin-wait or adaptive backoff strategies.
+//! **Note**: `drain()` is slower here due to amplified backpressure.
+//! With only 64 slots, delayed feedback hurts more than with 1024 slots.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;
@@ -29,6 +31,7 @@ use veloce::spsc::channel;
 
 const TOTAL_MESSAGES: usize = 100_000;
 const SMALL_BUFFER: usize = 64;
+const DRAIN_BATCH: usize = 32;
 
 #[bench]
 fn veloce_spin(b: &mut Bencher) {
@@ -52,6 +55,49 @@ fn veloce_spin(b: &mut Bencher) {
             for _ in 0..TOTAL_MESSAGES {
                 rx.recv_spin().unwrap();
             }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+/// Drain with small buffer: delayed head commit causes more producer stalls.
+/// Expected to be slower than spin due to backpressure.
+#[bench]
+fn veloce_drain(b: &mut Bencher) {
+    let (tx, mut rx) = channel::<i32, SMALL_BUFFER>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send_spin(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+
+            let mut received = 0;
+            while received < TOTAL_MESSAGES {
+                let drain = rx.drain(DRAIN_BATCH);
+                if drain.remaining() == 0 {
+                    std::hint::spin_loop();
+                    continue;
+                }
+                for v in drain {
+                    test::black_box(v);
+                    received += 1;
+                }
+            }
+
             done_rx.recv().unwrap();
         });
 
