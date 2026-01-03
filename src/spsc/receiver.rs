@@ -87,7 +87,6 @@ impl<T, const N: usize> Receiver<T, N> {
     }
 
     /// Returns true if the sender has been dropped.
-    #[cold]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
