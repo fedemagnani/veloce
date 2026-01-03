@@ -131,8 +131,7 @@ fn veloce_drain(b: &mut Bencher) {
                     std::hint::spin_loop();
                     continue;
                 }
-                for v in drain {
-                    test::black_box(v);
+                for _v in drain {
                     received += 1;
                 }
             }
