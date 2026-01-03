@@ -157,12 +157,16 @@ impl<T, const N: usize> Receiver<T, N> {
 
     /// Returns the `head` and `tail` of the channel.
     ///
-    /// The `tail` is retrieved via [`Ordering::Acquire`]: it shouldn't be called more than once
+    /// The `tail` is retrieved first via relaxed load to early exit if there is no new data,
+    /// then via [`Ordering::Acquire`]: it shouldn't be called more than once
     fn cursors(&self) -> Cursors {
         // Single consumer: the only one controlling the head
         let head = self.inner.head.load(Ordering::Relaxed);
-        // acquire-load: acquire ownership of the tail and observe all writes performed by the previous owner (producer) via release-store
+
+        // acquire-load: acquire ownership of the tail and observe all writes
+        // performed by the previous owner (producer) via release-store
         let tail = self.inner.tail.load(Ordering::Acquire);
+
         Cursors { head, tail }
     }
 
