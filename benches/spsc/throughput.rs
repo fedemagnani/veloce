@@ -13,6 +13,7 @@ pub use crossbeam_channel::bounded as crossbeam_bounded;
 pub use crossbeam_utils::thread::scope;
 pub use flume::bounded as flume_bounded;
 pub use kanal::bounded as kanal_bounded;
+use std::sync::mpsc::TryRecvError;
 pub use std::sync::mpsc::sync_channel as std_sync_channel;
 pub use test::Bencher;
 pub use veloce::spsc::channel;
@@ -185,7 +186,15 @@ fn std_sync(b: &mut Bencher) {
         s.spawn(|_| {
             while start_rx.recv().is_ok() {
                 for i in 0..TOTAL_MESSAGES {
-                    tx.send(i as i32).unwrap();
+                    loop {
+                        match tx.try_send(i as i32) {
+                            Ok(()) => break,
+                            Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                                std::hint::spin_loop();
+                            }
+                            Err(e) => panic!("{:?}", e),
+                        }
+                    }
                 }
                 done_tx.send(()).unwrap();
             }
@@ -194,7 +203,13 @@ fn std_sync(b: &mut Bencher) {
         b.iter(|| {
             start_tx.send(()).unwrap();
             for _ in 0..TOTAL_MESSAGES {
-                rx.recv().unwrap();
+                loop {
+                    match rx.try_recv() {
+                        Ok(_) => break,
+                        Err(TryRecvError::Empty) => std::hint::spin_loop(),
+                        Err(TryRecvError::Disconnected) => panic!("disconnected"),
+                    }
+                }
             }
             done_rx.recv().unwrap();
         });
