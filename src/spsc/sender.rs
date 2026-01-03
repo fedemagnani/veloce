@@ -1,10 +1,9 @@
+use crate::spsc::{Channel, TrySendErr};
 use std::{
     cell::Cell,
     marker::PhantomData,
     sync::{Arc, atomic::Ordering},
 };
-
-use crate::spsc::{Channel, TrySendErr};
 
 #[cfg(feature = "async")]
 pub use r#async::SendFuture;
@@ -99,6 +98,7 @@ impl<T, const N: usize> Sender<T, N> {
     }
 
     /// Returns true if the receiver has been dropped.
+    #[cold]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
