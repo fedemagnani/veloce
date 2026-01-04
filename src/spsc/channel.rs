@@ -1,17 +1,13 @@
-use std::{
-    cell::UnsafeCell,
-    mem::MaybeUninit,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use crossbeam_utils::CachePadded;
 
 use crate::{
     ring::RingBuffer,
-    spsc::{receiver::Receiver, sender::Sender},
+    spsc::{receiver::Receiver, sender::Sender, slot::Slot},
 };
 
 #[cfg(feature = "async")]
@@ -20,8 +16,10 @@ use r#async::Wakers;
 use std::task::Waker;
 
 pub(super) struct Channel<T, const N: usize> {
-    pub(super) buffer: RingBuffer<UnsafeCell<MaybeUninit<T>>, N>,
+    pub(super) buffer: RingBuffer<Slot<T>, N>,
+    /// Producer's cursor - only modified by sender, can be read by receiver
     pub(super) head: CachePadded<AtomicUsize>,
+    /// Consumer's cursor - only modified by receiver, can be read by sender
     pub(super) tail: CachePadded<AtomicUsize>,
     pub(super) closed: CachePadded<AtomicBool>,
 
@@ -31,6 +29,7 @@ pub(super) struct Channel<T, const N: usize> {
 
 impl<T, const N: usize> Default for Channel<T, N> {
     fn default() -> Self {
+        // RingBuffer::new() initializes stamps to [0, 1, 2, ..., N-1]
         let buffer = RingBuffer::default();
         let closed = CachePadded::new(AtomicBool::new(false));
         let head = CachePadded::new(AtomicUsize::new(0));
@@ -96,11 +95,9 @@ impl<T, const N: usize> Drop for Channel<T, N> {
         let tail = *self.tail.get_mut();
         let count = tail.wrapping_sub(head);
         for s in 0..count {
-            unsafe {
-                let i = self.buffer.index(head.wrapping_add(s));
-                // Safe: these slots are initialized (producer wrote, consumer didn't read)
-                self.buffer.drop(i);
-            }
+            let i = self.buffer.index(head.wrapping_add(s));
+            // Safe: these slots are initialized (producer wrote, consumer didn't read)
+            unsafe { self.buffer.drop_in_place(i) };
         }
     }
 }

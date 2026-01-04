@@ -72,6 +72,8 @@ pub use receiver::{Drain, Receiver};
 #[cfg(feature = "async")]
 pub use sender::SendFuture;
 pub use sender::Sender;
+mod slot;
+
 pub fn channel<T, const N: usize>() -> (Sender<T, N>, Receiver<T, N>) {
     Channel::default().split()
 }

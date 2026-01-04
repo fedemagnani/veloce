@@ -4,10 +4,14 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use crate::spsc::{Channel, Cursors, TryRecvError};
+use crate::{
+    ring::Storable,
+    spsc::{Channel, Cursors, TryRecvError},
+};
 
 #[cfg(feature = "async")]
 pub use r#async::RecvFuture;
+
 pub struct Receiver<T, const N: usize> {
     pub(super) inner: Arc<Channel<T, N>>,
     _not_clone: PhantomData<Cell<()>>, //marker type to avoid cloning implementations
@@ -21,28 +25,50 @@ impl<T, const N: usize> Receiver<T, N> {
         }
     }
 
-    /// Consumer consumes a value from the buffer if it's ready
+    /// Consumer consumes a value from the buffer using per-slot stamps (Vyukov algorithm).
+    ///
+    /// Protocol:
+    /// - Check slot stamp: if stamp == head + 1, data is ready
+    /// - Read value, then set stamp = head + N (signals "slot ready for next write lap")
+    /// - Advance head with Relaxed (only receiver modifies head)
     pub fn try_recv(&self) -> Result<Option<T>, TryRecvError> {
-        let cursors = self.cursors();
+        // Only receiver modifies head, so Relaxed is sufficient
+        let head = self.inner.head.load(Ordering::Relaxed);
+        let index = self.inner.buffer.index(head);
+        let slot = self.inner.buffer.get(index);
 
-        if cursors.is_empty() {
-            // Disconnection check happens only when we are sure that there are no more messages to read
+        // Acquire: synchronize with sender's Release store after writing
+        let stamp = slot.load_stamp();
+
+        if stamp == head.wrapping_add(1) {
+            // Data is ready
+            // Safety: we have exclusive access to read (stamp == head + 1)
+            let value = unsafe { slot.read() };
+
+            // Release: make the read visible before signaling "slot ready"
+            slot.store_stamp(head.wrapping_add(N));
+
+            // Advance head (Relaxed: only receiver reads/writes head)
+            self.inner
+                .head
+                .store(head.wrapping_add(1), Ordering::Relaxed);
+
+            Ok(Some(value))
+        } else if stamp == head {
+            // Buffer is empty: stamp == head means no data written yet
+            // Check disconnection only when empty
             if self.is_closed() {
                 return Err(TryRecvError);
             }
-
-            return Ok(None);
+            Ok(None)
+        } else {
+            // This shouldn't happen in correct SPSC usage
+            // stamp should be either head (empty) or head+1 (has data)
+            if self.is_closed() {
+                return Err(TryRecvError);
+            }
+            Ok(None)
         }
-
-        let head = cursors.head;
-
-        // Maps the head to the ring-buffer index and read the value
-        let out = unsafe { self.read(head) };
-
-        // release-store: make sure that acquire-loads see also the previous readings on the buffer
-        self.inner.head.store(head + 1, Ordering::Release);
-
-        Ok(Some(out))
     }
 
     /// Receiver retrieves a new value from the buffer using a busy-spin strategy.
@@ -92,11 +118,16 @@ impl<T, const N: usize> Receiver<T, N> {
     }
 
     /// Returns true if the channel is empty.
+    ///
+    /// Note: This uses the legacy cursor-based check for compatibility.
+    /// For most use cases, prefer checking if try_recv returns None.
     pub fn is_empty(&self) -> bool {
         self.cursors().is_empty()
     }
 
     /// Returns approximate number of items in the channel.
+    ///
+    /// Note: This is approximate as it reads both cursors non-atomically.
     pub fn len(&self) -> usize {
         self.cursors().remaining()
     }
@@ -108,18 +139,16 @@ impl<T, const N: usize> Receiver<T, N> {
     ///
     /// # Performance
     ///
-    /// Synchronization is batched: one `Acquire` load at construction, one `Release`
-    /// store on drop. This is faster than calling [`try_recv()`](Self::try_recv) in a
-    /// loop when processing multiple items.
+    /// With per-slot stamps, each item read updates its slot stamp individually.
+    /// However, the head cursor is only updated once on drop, batching that update.
     ///
-    /// The trade-off: the producer won't see freed slots until the `Drain` drops. This
-    /// could cause some backpressure if the producer is particularly spammy and [`Drain`]
-    /// lives for too long (for example, if the consumer is slow in processing updates)
-    ///
+    /// The trade-off: the producer won't see freed slots until the `Drain` drops
+    /// AND the slot stamps are updated. With per-slot stamps, the producer can
+    /// actually see individual slots become available as they're read.
     ///
     /// # Behavior
     ///
-    /// - Yields only items available at construction (snapshot semantics)
+    /// - Yields only items available at construction (snapshot semantics via cursor check)
     /// - Does not signal disconnection — check [`is_closed()`](Self::is_closed) after
     /// - Panic-safe: consumed items are committed even if iteration panics
     ///
@@ -138,44 +167,35 @@ impl<T, const N: usize> Receiver<T, N> {
     /// ```
     #[inline]
     pub fn drain(&mut self, max: usize) -> Drain<'_, T, N> {
-        let mut cursors = self.cursors();
+        let cursors = self.cursors();
         let original_head = cursors.head;
 
         // Clamp tail so we yield at most `max` items.
         // Compare counts (not raw sequence numbers) to handle wrap-around.
         let available = cursors.remaining();
-        if max < available {
-            cursors.tail = original_head.wrapping_add(max);
-        }
+        let limit = if max < available {
+            original_head.wrapping_add(max)
+        } else {
+            cursors.tail
+        };
 
         Drain {
             rx: self,
             original_head,
-            cursors,
+            current_head: original_head,
+            limit,
         }
     }
 
     /// Returns the `head` and `tail` of the channel.
     ///
-    /// The `tail` is retrieved first via relaxed load to early exit if there is no new data,
-    /// then via [`Ordering::Acquire`]: it shouldn't be called more than once
+    /// Used for len() and is_empty() checks. For actual recv operations,
+    /// we use per-slot stamps instead.
     fn cursors(&self) -> Cursors {
-        // Single consumer: the only one controlling the head
+        // Both loads are Relaxed since this is just an approximate snapshot
         let head = self.inner.head.load(Ordering::Relaxed);
-
-        // acquire-load: acquire ownership of the tail and observe all writes
-        // performed by the previous owner (producer) via release-store
-        let tail = self.inner.tail.load(Ordering::Acquire);
-
+        let tail = self.inner.tail.load(Ordering::Relaxed);
         Cursors { head, tail }
-    }
-
-    /// Maps the sequence to the ring-buffer index, reading the value from the buffer.
-    ///
-    /// Notice: it doesn't update the head
-    unsafe fn read(&self, seq: usize) -> T {
-        let i = self.inner.buffer.index(seq);
-        unsafe { self.inner.buffer.read(i) }
     }
 }
 
@@ -194,26 +214,28 @@ unsafe impl<T: Send, const N: usize> Send for Receiver<T, N> {}
 
 /// Draining iterator created by [`Receiver::drain()`].
 ///
-/// Reads items from `[original_head, tail)` without per-item synchronization.
-/// On drop, commits all consumed items with a single `Release` store.
+/// Reads items using per-slot stamps for synchronization.
+/// On drop, commits the final head position.
 pub struct Drain<'a, T, const N: usize> {
     rx: &'a mut Receiver<T, N>,
     /// Head at construction; used to detect if anything was consumed.
     original_head: usize,
-    /// `head` advances during iteration; `tail` is fixed at construction.
-    cursors: Cursors,
+    /// Current head position (advances during iteration).
+    current_head: usize,
+    /// Upper limit (exclusive) for this drain.
+    limit: usize,
 }
 
 impl<T, const N: usize> Drain<'_, T, N> {
-    /// Writes the current head back to the channel (Release).
+    /// Writes the current head back to the channel.
     /// Skipped if nothing was consumed.
     #[inline]
     fn commit_head(&self) {
-        if self.original_head != self.cursors.head {
+        if self.original_head != self.current_head {
             self.rx
                 .inner
                 .head
-                .store(self.cursors.head, Ordering::Release);
+                .store(self.current_head, Ordering::Relaxed);
         }
     }
 
@@ -226,7 +248,7 @@ impl<T, const N: usize> Drain<'_, T, N> {
     /// Returns how many items are left in this drain.
     #[inline]
     pub fn remaining(&self) -> usize {
-        self.cursors.remaining()
+        self.limit.wrapping_sub(self.current_head)
     }
 }
 
@@ -235,24 +257,36 @@ impl<T, const N: usize> Iterator for Drain<'_, T, N> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cursors.is_empty() {
+        if self.current_head == self.limit {
             return None;
         }
 
-        let head = self.cursors.head;
+        let head = self.current_head;
+        let index = self.rx.inner.buffer.index(head);
+        let slot = self.rx.inner.buffer.get(index);
 
-        // Safety: head < tail, so slot is initialized. The Acquire on tail
-        // at construction synchronized with the producer's Release store.
-        let out = unsafe { self.rx.read(head) };
+        // Acquire: synchronize with sender's Release store
+        let stamp = slot.load_stamp();
 
-        // Update ephemeral head (real head is updated on `drop`)
-        self.cursors.head += 1;
-        Some(out)
+        if stamp == head.wrapping_add(1) {
+            // Data is ready
+            // Safety: stamp == head + 1 means sender wrote this slot
+            let value = unsafe { slot.read() };
+
+            // Release: signal slot is ready for next write lap
+            slot.store_stamp(head.wrapping_add(N));
+
+            self.current_head = head.wrapping_add(1);
+            Some(value)
+        } else {
+            // No more data available (shouldn't happen within limit, but be safe)
+            None
+        }
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let r = self.cursors.remaining();
+        let r = self.remaining();
         (r, Some(r))
     }
 }
@@ -303,23 +337,26 @@ mod r#async {
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             match self.receiver.try_recv() {
                 Ok(Some(v)) => {
-                    // Consume a value from the buffer, waking sender who might be waiting for some free space in the buffer
+                    // Consume a value from the buffer, waking sender who might be waiting
                     self.wake_sender();
                     Poll::Ready(Ok(v))
                 }
                 Ok(None) => {
-                    // we store the waker for future polls
+                    // Register waker for future polls
                     self.register_waker(cx.waker());
 
-                    // We give a second shot to see if we should be woken up immediately
-                    let tail = self.receiver.inner.tail.load(Ordering::Acquire);
+                    // Double-check: see if data became available
+                    // With slot stamps, we check the slot at current head
                     let head = self.receiver.inner.head.load(Ordering::Relaxed);
+                    let index = self.receiver.inner.buffer.index(head);
+                    let slot = self.receiver.inner.buffer.get(index);
+                    let stamp = slot.load_stamp();
 
-                    // Check if producer pushed some data in the meanwhile
-                    if tail != head {
-                        // New data is available, self-wake to try another recv attempt (via the waker just registered)
+                    if stamp == head.wrapping_add(1) {
+                        // Data is now available, self-wake
                         cx.waker().wake_by_ref();
                     }
+
                     Poll::Pending
                 }
                 Err(e) => Poll::Ready(Err(e)),
