@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicUsize;
 use std::{ptr, sync::atomic::Ordering};
 
-/// A slot in the ring buffer with per-slot sequence stamp for Vyukov-style synchronization.
+/// A slot in the ring buffer with per-slot sequence stamp for [Vyukov](https://x.com/dvyukov)-style synchronization.
 ///
 /// It can be used for Vyukov's algorithm where each slot has its own sequence stamp,
 /// allowing sender and receiver to synchronize through slot state rather

@@ -45,7 +45,6 @@ impl<T, const N: usize> Sender<T, N> {
 
         if stamp == tail {
             // Slot is ready for writing
-            // Safety: we have exclusive access to this slot (stamp == tail)
             unsafe { slot.write(value) };
 
             // Release: make the write visible before signaling "data ready"

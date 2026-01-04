@@ -53,22 +53,14 @@ impl<T, const N: usize> Receiver<T, N> {
                 .head
                 .store(head.wrapping_add(1), Ordering::Relaxed);
 
-            Ok(Some(value))
-        } else if stamp == head {
-            // Buffer is empty: stamp == head means no data written yet
-            // Check disconnection only when empty
-            if self.is_closed() {
-                return Err(TryRecvError);
-            }
-            Ok(None)
-        } else {
-            // This shouldn't happen in correct SPSC usage
-            // stamp should be either head (empty) or head+1 (has data)
-            if self.is_closed() {
-                return Err(TryRecvError);
-            }
-            Ok(None)
+            return Ok(Some(value));
         }
+        // If we are here, buffer is empty: stamp == head means no data written yet
+        // Check disconnection only when empty
+        if self.is_closed() {
+            return Err(TryRecvError);
+        }
+        Ok(None)
     }
 
     /// Receiver retrieves a new value from the buffer using a busy-spin strategy.
