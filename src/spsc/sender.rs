@@ -1,10 +1,9 @@
+use crate::spsc::{Channel, TrySendErr};
 use std::{
     cell::Cell,
     marker::PhantomData,
     sync::{Arc, atomic::Ordering},
 };
-
-use crate::spsc::{Channel, TrySendErr};
 
 #[cfg(feature = "async")]
 pub use r#async::SendFuture;

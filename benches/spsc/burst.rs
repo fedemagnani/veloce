@@ -1,26 +1,17 @@
-//! Burst Benchmarks
+//! Single-threaded batch processing: fill buffer, then drain completely.
 //!
-//! Measures batched send/recv performance: fill the buffer completely,
-//! then drain it completely. Single-threaded.
+//! Measures raw channel throughput without cross-thread synchronization.
+//! Producer and consumer run sequentially on the same thread.
 //!
-//! ## What is measured
+//! Real-world scenarios:
+//! - Reading records from a file, then processing the batch
+//! - Collecting log entries, then flushing to disk
+//! - ETL pipelines with staged processing
 //!
-//! - Sequential write throughput (512 sends with no intervening reads)
-//! - Sequential read throughput (512 recvs with no intervening writes)
-//! - Memory access patterns during bulk operations
-//! - Cache behavior when accessing buffer slots sequentially
-//!
-//! ## Methodology
-//!
-//! 1. Channel with [`BUFFER_SIZE`](crate::BUFFER_SIZE) (1024) slots is created once
-//! 2. Each iteration:
-//!    - **Burst send**: 512 consecutive `send` calls (fills half the buffer)
-//!    - **Burst recv**: 512 consecutive `recv` calls (drains the buffer)
-//!
-//! All operations happen on the same thread. This tests raw operation speed
-//! without any synchronization or blocking, simulating batch processing patterns.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -33,13 +24,42 @@ const BURST_SIZE: usize = 512;
 fn veloce(b: &mut Bencher) {
     let (tx, rx) = channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
-        // Burst send
         for i in 0..BURST_SIZE {
             tx.try_send(i as i32).unwrap();
         }
-        // Burst receive
         for _ in 0..BURST_SIZE {
             test::black_box(rx.try_recv().unwrap());
+        }
+    });
+}
+
+/// Uses `drain()` to batch-receive all items with a single release-store.
+/// This is the ideal use case for drain: single-threaded batch processing.
+#[bench]
+fn veloce_drain(b: &mut Bencher) {
+    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        for i in 0..BURST_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        for v in rx.drain(BURST_SIZE) {
+            test::black_box(v);
+        }
+    });
+}
+
+/// Drain with larger batch to show scalability.
+#[bench]
+fn veloce_drain_full(b: &mut Bencher) {
+    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        // Fill entire buffer
+        for i in 0..BUFFER_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        // Drain all at once
+        for v in rx.drain(BUFFER_SIZE) {
+            test::black_box(v);
         }
     });
 }
@@ -60,6 +80,32 @@ fn crossbeam(b: &mut Bencher) {
 #[bench]
 fn std_sync(b: &mut Bencher) {
     let (tx, rx) = std_sync_channel::<i32>(BUFFER_SIZE);
+    b.iter(|| {
+        for i in 0..BURST_SIZE {
+            tx.send(i as i32).unwrap();
+        }
+        for _ in 0..BURST_SIZE {
+            test::black_box(rx.recv().unwrap());
+        }
+    });
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    let (tx, rx) = flume_bounded::<i32>(BUFFER_SIZE);
+    b.iter(|| {
+        for i in 0..BURST_SIZE {
+            tx.send(i as i32).unwrap();
+        }
+        for _ in 0..BURST_SIZE {
+            test::black_box(rx.recv().unwrap());
+        }
+    });
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    let (tx, rx) = kanal_bounded::<i32>(BUFFER_SIZE);
     b.iter(|| {
         for i in 0..BURST_SIZE {
             tx.send(i as i32).unwrap();

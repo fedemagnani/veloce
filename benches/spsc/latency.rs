@@ -1,41 +1,21 @@
-//! Ping-Pong Latency Benchmarks
+//! Ping-pong latency: measure round-trip time for request-response patterns.
 //!
-//! Measures round-trip latency between two threads exchanging messages
-//! in a strict request-response pattern.
+//! Each iteration sends a message and waits for a response before proceeding.
+//! Measures single-message latency rather than throughput. Critical for
+//! latency-sensitive applications.
 //!
-//! ## What is measured
+//! Real-world scenarios:
+//! - Database query round-trips
+//! - RPC and microservice communication
+//! - Any request-response protocol
 //!
-//! - Single-message round-trip latency
-//! - Thread wakeup latency (time for sleeping thread to resume)
-//! - Cross-core cache line transfer time
-//! - Synchronization primitive efficiency
-//!
-//! ## Methodology
-//!
-//! Two channels are created (A→B and B→A) with minimal buffer size (2 slots):
-//!
-//! ```text
-//!   Thread 1 (Ping)          Thread 2 (Pong)
-//!        │                        │
-//!        ├─── send(v) ──────────► │
-//!        │                        ├─── recv()
-//!        │                        ├─── send(v)
-//!        │ ◄───────────────────── ┤
-//!        ├─── recv()              │
-//!        │                        │
-//!       (repeat 10,000 times)
-//! ```
-//!
-//! Each iteration performs 10,000 round-trips. The benchmark measures total
-//! time for all round-trips, emphasizing wakeup latency over throughput.
-//!
-//! ## Note on std
-//!
-//! `std::sync::mpsc::Receiver` is not `Sync`, so channels must be created
-//! fresh each iteration (including thread spawn), adding significant overhead.
+//! Note: std creates fresh channels each iteration due to API constraints,
+//! so its numbers include allocation overhead.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
 use crossbeam_utils::thread::scope;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use test::Bencher;
 use veloce::spsc::channel;
 
@@ -134,4 +114,70 @@ fn std_sync(b: &mut Bencher) {
 
         handle.join().unwrap();
     });
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    let (tx1, rx1) = flume_bounded::<i32>(2);
+    let (tx2, rx2) = flume_bounded::<i32>(2);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for _ in 0..PING_PONG_ROUNDS {
+                    let v = rx1.recv().unwrap();
+                    tx2.send(v).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for i in 0..PING_PONG_ROUNDS {
+                tx1.send(i as i32).unwrap();
+                test::black_box(rx2.recv().unwrap());
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    let (tx1, rx1) = kanal_bounded::<i32>(2);
+    let (tx2, rx2) = kanal_bounded::<i32>(2);
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for _ in 0..PING_PONG_ROUNDS {
+                    let v = rx1.recv().unwrap();
+                    tx2.send(v).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for i in 0..PING_PONG_ROUNDS {
+                tx1.send(i as i32).unwrap();
+                test::black_box(rx2.recv().unwrap());
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
 }
