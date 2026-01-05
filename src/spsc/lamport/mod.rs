@@ -199,7 +199,7 @@ mod tests {
 
         for w in words {
             'i: loop {
-                if let Ok(Some(out)) = rx.try_recv() {
+                if let Ok(out) = rx.try_recv() {
                     assert_eq!(out, w);
                     break 'i;
                 }

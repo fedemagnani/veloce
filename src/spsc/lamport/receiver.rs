@@ -24,7 +24,7 @@ impl<T, const N: usize> Receiver<T, N> {
     }
 
     /// Consumer consumes a value from the buffer if it's ready
-    pub fn try_recv(&self) -> Result<Option<T>, TryRecvError> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let cursors = self.cursors();
 
         if cursors.is_empty() {
@@ -33,7 +33,7 @@ impl<T, const N: usize> Receiver<T, N> {
                 return Err(TryRecvError::Disconnected);
             }
 
-            return Ok(None);
+            return Err(TryRecvError::Empty);
         }
 
         let head = cursors.head;
@@ -44,7 +44,7 @@ impl<T, const N: usize> Receiver<T, N> {
         // release-store: make sure that acquire-loads see also the previous readings on the buffer
         self.inner.head.store(head + 1, Ordering::Release);
 
-        Ok(Some(out))
+        Ok(out)
     }
 
     /// Receiver retrieves a new value from the buffer using a busy-spin strategy.
@@ -58,11 +58,11 @@ impl<T, const N: usize> Receiver<T, N> {
     pub fn recv_spin(&self) -> Result<T, TryRecvError> {
         loop {
             match self.try_recv() {
-                Ok(Some(v)) => return Ok(v),
-                Err(e) => return Err(e),
-                Ok(None) => {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {
                     std::hint::spin_loop();
                 }
+                Err(e) => return Err(e),
             }
         }
     }
@@ -304,12 +304,12 @@ mod r#async {
         type Output = Result<T, TryRecvError>;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             match self.receiver.try_recv() {
-                Ok(Some(v)) => {
+                Ok(v) => {
                     // Consume a value from the buffer, waking sender who might be waiting for some free space in the buffer
                     self.wake_sender();
                     Poll::Ready(Ok(v))
                 }
-                Ok(None) => {
+                Err(TryRecvError::Empty) => {
                     // we store the waker for future polls
                     self.register_waker(cx.waker());
 

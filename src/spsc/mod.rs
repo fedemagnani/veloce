@@ -7,7 +7,7 @@
 //!
 //! This module provides two alternative SPSC algorithms:
 //!
-//! - [`lamport`] — Classic approach with shared atomic head/tail indices
+//! - [`lamport`] — Classic approach with shared atomic head/tail indices. It is extremely cheap to create
 //! - [`vyukov`] — Per-slot sequence stamps for reduced cache contention
 
 pub mod lamport;
