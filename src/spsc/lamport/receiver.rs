@@ -4,7 +4,9 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use crate::spsc::{Channel, Cursors, TryRecvError};
+use crate::spsc::TryRecvError;
+
+use super::{Cursors, channel::Channel};
 
 #[cfg(feature = "async")]
 pub use r#async::RecvFuture;
@@ -22,16 +24,16 @@ impl<T, const N: usize> Receiver<T, N> {
     }
 
     /// Consumer consumes a value from the buffer if it's ready
-    pub fn try_recv(&self) -> Result<Option<T>, TryRecvError> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let cursors = self.cursors();
 
         if cursors.is_empty() {
             // Disconnection check happens only when we are sure that there are no more messages to read
             if self.is_closed() {
-                return Err(TryRecvError);
+                return Err(TryRecvError::Disconnected);
             }
 
-            return Ok(None);
+            return Err(TryRecvError::Empty);
         }
 
         let head = cursors.head;
@@ -42,7 +44,7 @@ impl<T, const N: usize> Receiver<T, N> {
         // release-store: make sure that acquire-loads see also the previous readings on the buffer
         self.inner.head.store(head + 1, Ordering::Release);
 
-        Ok(Some(out))
+        Ok(out)
     }
 
     /// Receiver retrieves a new value from the buffer using a busy-spin strategy.
@@ -56,11 +58,11 @@ impl<T, const N: usize> Receiver<T, N> {
     pub fn recv_spin(&self) -> Result<T, TryRecvError> {
         loop {
             match self.try_recv() {
-                Ok(Some(v)) => return Ok(v),
-                Err(e) => return Err(e),
-                Ok(None) => {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {
                     std::hint::spin_loop();
                 }
+                Err(e) => return Err(e),
             }
         }
     }
@@ -157,12 +159,16 @@ impl<T, const N: usize> Receiver<T, N> {
 
     /// Returns the `head` and `tail` of the channel.
     ///
-    /// The `tail` is retrieved via [`Ordering::Acquire`]: it shouldn't be called more than once
+    /// The `tail` is retrieved first via relaxed load to early exit if there is no new data,
+    /// then via [`Ordering::Acquire`]: it shouldn't be called more than once
     fn cursors(&self) -> Cursors {
         // Single consumer: the only one controlling the head
         let head = self.inner.head.load(Ordering::Relaxed);
-        // acquire-load: acquire ownership of the tail and observe all writes performed by the previous owner (producer) via release-store
+
+        // acquire-load: acquire ownership of the tail and observe all writes
+        // performed by the previous owner (producer) via release-store
         let tail = self.inner.tail.load(Ordering::Acquire);
+
         Cursors { head, tail }
     }
 
@@ -298,12 +304,12 @@ mod r#async {
         type Output = Result<T, TryRecvError>;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             match self.receiver.try_recv() {
-                Ok(Some(v)) => {
+                Ok(v) => {
                     // Consume a value from the buffer, waking sender who might be waiting for some free space in the buffer
                     self.wake_sender();
                     Poll::Ready(Ok(v))
                 }
-                Ok(None) => {
+                Err(TryRecvError::Empty) => {
                     // we store the waker for future polls
                     self.register_waker(cx.waker());
 

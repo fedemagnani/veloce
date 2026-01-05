@@ -17,14 +17,49 @@ use crossbeam_utils::thread::scope;
 use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use test::Bencher;
-use veloce::spsc::channel;
-
+use veloce::spsc::lamport::channel as lamport_channel;
+use veloce::spsc::vyukov::channel as vyukov_channel;
 const PING_PONG_ROUNDS: usize = 10_000;
 
 #[bench]
-fn veloce(b: &mut Bencher) {
-    let (tx1, rx1) = channel::<i32, 2>();
-    let (tx2, rx2) = channel::<i32, 2>();
+fn veloce_lamport(b: &mut Bencher) {
+    let (tx1, rx1) = lamport_channel::<i32, 2>();
+    let (tx2, rx2) = lamport_channel::<i32, 2>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        // Pong thread
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for _ in 0..PING_PONG_ROUNDS {
+                    let v = rx1.recv_spin().unwrap();
+                    tx2.send_spin(v).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        // Ping thread (benchmark thread)
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for i in 0..PING_PONG_ROUNDS {
+                tx1.send_spin(i as i32).unwrap();
+                test::black_box(rx2.recv_spin().unwrap());
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn veloce_vyukov(b: &mut Bencher) {
+    let (tx1, rx1) = vyukov_channel::<i32, 2>();
+    let (tx2, rx2) = vyukov_channel::<i32, 2>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);

@@ -16,14 +16,15 @@ pub use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::TryRecvError;
 pub use std::sync::mpsc::sync_channel as std_sync_channel;
 pub use test::Bencher;
-pub use veloce::spsc::channel;
+pub use veloce::spsc::lamport::channel as lamport_channel;
+pub use veloce::spsc::vyukov::channel as vyukov_channel;
 
 pub const BUFFER_SIZE: usize = 1024;
 pub const TOTAL_MESSAGES: usize = 100_000;
 
 #[bench]
-fn veloce_spin(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_spin(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);
@@ -53,8 +54,39 @@ fn veloce_spin(b: &mut Bencher) {
 }
 
 #[bench]
-fn veloce_try(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_vyukov_spin(b: &mut Bencher) {
+    let (tx, rx) = vyukov_channel::<i32, BUFFER_SIZE>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        // Producer thread
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send_spin(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for _ in 0..TOTAL_MESSAGES {
+                rx.recv_spin().unwrap();
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn veloce_lamport_try(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);
@@ -83,8 +115,53 @@ fn veloce_try(b: &mut Bencher) {
             for _ in 0..TOTAL_MESSAGES {
                 loop {
                     match rx.try_recv() {
-                        Ok(Some(_)) => break,
-                        Ok(None) => std::hint::spin_loop(),
+                        Ok(_) => break,
+                        Err(veloce::spsc::TryRecvError::Empty) => std::hint::spin_loop(),
+                        Err(e) => panic!("{:?}", e),
+                    }
+                }
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn veloce_vyukov_try(b: &mut Bencher) {
+    let (tx, rx) = vyukov_channel::<i32, BUFFER_SIZE>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        // Producer thread using try_send with spin
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    loop {
+                        match tx.try_send(i as i32) {
+                            Ok(()) => break,
+                            Err(veloce::spsc::TrySendErr::Full(_)) => {
+                                std::hint::spin_loop();
+                            }
+                            Err(e) => panic!("{:?}", e),
+                        }
+                    }
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for _ in 0..TOTAL_MESSAGES {
+                loop {
+                    match rx.try_recv() {
+                        Ok(_) => break,
+                        Err(veloce::spsc::TryRecvError::Empty) => std::hint::spin_loop(),
                         Err(e) => panic!("{:?}", e),
                     }
                 }
@@ -104,10 +181,58 @@ fn veloce_try(b: &mut Bencher) {
 /// - Single-threaded batch processing (see burst benchmark)
 /// - Bursty producer patterns where consumer processes between bursts
 #[bench]
-fn veloce_drain(b: &mut Bencher) {
+fn veloce_lamport_drain(b: &mut Bencher) {
     const DRAIN_BATCH: usize = 256;
 
-    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+    let (tx, mut rx) = lamport_channel::<i32, BUFFER_SIZE>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send_spin(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+
+            let mut received = 0;
+            while received < TOTAL_MESSAGES {
+                let drain = rx.drain(DRAIN_BATCH);
+                if drain.remaining() == 0 {
+                    std::hint::spin_loop();
+                    continue;
+                }
+                for _v in drain {
+                    received += 1;
+                }
+            }
+
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+/// Uses `drain()` for batch receiving: one acquire-load + one release-store per batch.
+///
+/// Note: In continuous streaming, drain is typically slower than `recv_spin` because
+/// the delayed head commit (on drain drop) causes producer stalls. Drain excels in:
+/// - Single-threaded batch processing (see burst benchmark)
+/// - Bursty producer patterns where consumer processes between bursts
+#[bench]
+fn veloce_vyukov_drain(b: &mut Bencher) {
+    const DRAIN_BATCH: usize = 256;
+
+    let (tx, mut rx) = vyukov_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);

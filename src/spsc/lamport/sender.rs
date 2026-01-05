@@ -1,4 +1,6 @@
-use crate::spsc::{Channel, TrySendErr};
+use crate::spsc::TrySendErr;
+
+use super::{Channel, Cursors};
 use std::{
     cell::Cell,
     marker::PhantomData,
@@ -7,7 +9,6 @@ use std::{
 
 #[cfg(feature = "async")]
 pub use r#async::SendFuture;
-
 pub struct Sender<T, const N: usize> {
     pub(super) inner: Arc<Channel<T, N>>,
     _not_clone: PhantomData<Cell<()>>, //marker type to avoid cloning implementations
@@ -27,13 +28,10 @@ impl<T, const N: usize> Sender<T, N> {
             return Err(TrySendErr::Disconnected(value));
         }
 
-        // Single producer: the only one controlling the tail
-        let tail = self.inner.tail.load(Ordering::Relaxed);
+        let c = self.cursors();
+        let tail = c.tail;
 
-        // acquire-load: acquire ownership of the head and observe all writes performed by the previous owner (consumer) via release-store
-        let head = self.inner.head.load(Ordering::Acquire);
-
-        if tail.wrapping_sub(head) >= N {
+        if tail.wrapping_sub(c.head) >= N {
             // slow consumer
             return Err(TrySendErr::Full(value));
         }
@@ -100,6 +98,21 @@ impl<T, const N: usize> Sender<T, N> {
     /// Returns true if the receiver has been dropped.
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
+    }
+
+    /// Returns the `head` and `tail` of the channel.
+    ///
+    /// The `head` is retrieved first via relaxed load to early exit if there is no new data,
+    /// then via [`Ordering::Acquire`]: it shouldn't be called more than once
+    fn cursors(&self) -> Cursors {
+        // Single producer: the only one controlling the tail
+        let tail = self.inner.tail.load(Ordering::Relaxed);
+
+        // New space available, need acquire-load: acquire ownership of the head and observe all writes
+        // performed by the previous owner (consumer) via release-store
+        let head = self.inner.head.load(Ordering::Acquire);
+
+        Cursors { head, tail }
     }
 }
 
