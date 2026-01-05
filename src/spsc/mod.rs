@@ -78,29 +78,6 @@ pub fn channel<T, const N: usize>() -> (Sender<T, N>, Receiver<T, N>) {
     Channel::default().split()
 }
 
-/// Snapshot of head and tail sequence numbers.
-///
-/// Sequence numbers are unbounded and wrap around; use `wrapping_sub` for distance.
-#[derive(Clone, Copy)]
-pub struct Cursors {
-    pub head: usize,
-    pub tail: usize,
-}
-
-impl Cursors {
-    /// Number of items in `[head, tail)`.
-    #[inline]
-    pub fn remaining(&self) -> usize {
-        self.tail.wrapping_sub(self.head)
-    }
-
-    /// True if `head == tail` (no items).
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.head == self.tail
-    }
-}
-
 /// Generates type aliases for common buffer sizes.
 ///
 /// Creates types like `Sender2<T>`, `channel16<T>`, `Receiver64<T>`, etc.
@@ -317,16 +294,16 @@ mod tests {
             tx.try_send(i).unwrap();
         }
 
+        // Note: remaining() is now the max allowed, not exact count
         let mut drain = rx.drain(usize::MAX);
-        assert_eq!(drain.remaining(), 5);
-        assert_eq!(drain.len(), 5); // ExactSizeIterator
+        assert_eq!(drain.remaining(), usize::MAX);
 
         drain.next();
-        assert_eq!(drain.remaining(), 4);
+        assert_eq!(drain.remaining(), usize::MAX - 1);
 
         drain.next();
         drain.next();
-        assert_eq!(drain.remaining(), 2);
+        assert_eq!(drain.remaining(), usize::MAX - 3);
     }
 
     #[test]

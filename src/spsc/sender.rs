@@ -4,23 +4,24 @@ use crate::{
 };
 use std::{
     cell::Cell,
-    marker::PhantomData,
     sync::{Arc, atomic::Ordering},
 };
 
 #[cfg(feature = "async")]
 pub use r#async::SendFuture;
+use crossbeam_utils::CachePadded;
 
 pub struct Sender<T, const N: usize> {
-    pub(super) inner: Arc<Channel<T, N>>,
-    _not_clone: PhantomData<Cell<()>>, //marker type to avoid cloning implementations
+    pub(super) inner: CachePadded<Arc<Channel<T, N>>>,
+    /// Local tail cursor - only modified by this sender.
+    tail: Cell<usize>,
 }
 
 impl<T, const N: usize> Sender<T, N> {
     pub(super) fn new(inner: Arc<Channel<T, N>>) -> Self {
         Self {
-            inner,
-            _not_clone: PhantomData,
+            inner: CachePadded::new(inner),
+            tail: Cell::new(0),
         }
     }
 
@@ -29,14 +30,13 @@ impl<T, const N: usize> Sender<T, N> {
     /// Protocol:
     /// - Check slot stamp: if stamp == tail, slot is ready for writing
     /// - Write value, then set stamp = tail + 1 (signals "data ready")
-    /// - Advance tail with Relaxed (only sender modifies tail)
+    /// - Advance local tail cursor
     pub fn try_send(&self, value: T) -> Result<(), TrySendErr<T>> {
         if self.is_closed() {
             return Err(TrySendErr::Disconnected(value));
         }
 
-        // Only sender modifies tail, so Relaxed is sufficient
-        let tail = self.inner.tail.load(Ordering::Relaxed);
+        let tail = self.tail.get();
         let index = self.inner.buffer.index(tail);
         let slot = self.inner.buffer.get(index);
 
@@ -50,15 +50,12 @@ impl<T, const N: usize> Sender<T, N> {
             // Release: make the write visible before signaling "data ready"
             slot.store_stamp(tail.wrapping_add(1));
 
-            // Advance tail (Relaxed: only sender reads/writes tail)
-            self.inner
-                .tail
-                .store(tail.wrapping_add(1), Ordering::Relaxed);
+            // Advance local tail (Relaxed: we're the only writer)
+            self.tail.set(tail.wrapping_add(1));
 
             Ok(())
         } else {
-            // Buffer is full: stamp should be (tail - N + 1), meaning receiver
-            // hasn't consumed this slot from the previous lap yet
+            // Buffer is full: receiver hasn't consumed this slot from the previous lap yet
             Err(TrySendErr::Full(value))
         }
     }
@@ -127,6 +124,7 @@ unsafe impl<T: Send, const N: usize> Send for Sender<T, N> {}
 #[cfg(feature = "async")]
 mod r#async {
     use std::{
+        future::Future,
         pin::Pin,
         task::{Context, Poll, Waker},
     };
@@ -184,8 +182,7 @@ mod r#async {
                     self.register_waker(cx.waker());
 
                     // Double-check: see if space became available
-                    // With slot stamps, we check the slot at current tail
-                    let tail = self.sender.inner.tail.load(Ordering::Relaxed);
+                    let tail = self.sender.tail.get();
                     let index = self.sender.inner.buffer.index(tail);
                     let slot = self.sender.inner.buffer.get(index);
                     let stamp = slot.load_stamp();

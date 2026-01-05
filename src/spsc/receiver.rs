@@ -1,27 +1,28 @@
 use std::{
     cell::Cell,
-    marker::PhantomData,
     sync::{Arc, atomic::Ordering},
 };
 
 use crate::{
     ring::Storable,
-    spsc::{Channel, Cursors, TryRecvError},
+    spsc::{Channel, TryRecvError},
 };
 
 #[cfg(feature = "async")]
 pub use r#async::RecvFuture;
+use crossbeam_utils::CachePadded;
 
 pub struct Receiver<T, const N: usize> {
-    pub(super) inner: Arc<Channel<T, N>>,
-    _not_clone: PhantomData<Cell<()>>, //marker type to avoid cloning implementations
+    pub(super) inner: CachePadded<Arc<Channel<T, N>>>,
+    /// Local head cursor - only modified by this receiver.
+    head: Cell<usize>,
 }
 
 impl<T, const N: usize> Receiver<T, N> {
     pub(super) fn new(inner: Arc<Channel<T, N>>) -> Self {
         Self {
-            inner,
-            _not_clone: PhantomData,
+            inner: CachePadded::new(inner),
+            head: Cell::new(0),
         }
     }
 
@@ -30,10 +31,9 @@ impl<T, const N: usize> Receiver<T, N> {
     /// Protocol:
     /// - Check slot stamp: if stamp == head + 1, data is ready
     /// - Read value, then set stamp = head + N (signals "slot ready for next write lap")
-    /// - Advance head with Relaxed (only receiver modifies head)
+    /// - Advance local head cursor
     pub fn try_recv(&self) -> Result<Option<T>, TryRecvError> {
-        // Only receiver modifies head, so Relaxed is sufficient
-        let head = self.inner.head.load(Ordering::Relaxed);
+        let head = self.head.get();
         let index = self.inner.buffer.index(head);
         let slot = self.inner.buffer.get(index);
 
@@ -42,20 +42,18 @@ impl<T, const N: usize> Receiver<T, N> {
 
         if stamp == head.wrapping_add(1) {
             // Data is ready
-            // Safety: we have exclusive access to read (stamp == head + 1)
             let value = unsafe { slot.read() };
 
             // Release: make the read visible before signaling "slot ready"
             slot.store_stamp(head.wrapping_add(N));
 
-            // Advance head (Relaxed: only receiver reads/writes head)
-            self.inner
-                .head
-                .store(head.wrapping_add(1), Ordering::Relaxed);
+            // Advance local head (Relaxed: we're the only writer)
+            self.head.set(head.wrapping_add(1));
 
             return Ok(Some(value));
         }
-        // If we are here, buffer is empty: stamp == head means no data written yet
+
+        // Buffer is empty: stamp == head means no data written yet
         // Check disconnection only when empty
         if self.is_closed() {
             return Err(TryRecvError);
@@ -109,38 +107,57 @@ impl<T, const N: usize> Receiver<T, N> {
         self.inner.is_closed()
     }
 
-    /// Returns true if the channel is empty.
+    /// Returns true if the channel appears empty.
     ///
-    /// Note: This uses the legacy cursor-based check for compatibility.
-    /// For most use cases, prefer checking if try_recv returns None.
+    /// This checks the slot at the current head position. For most use cases,
+    /// prefer checking if `try_recv()` returns `None`.
     pub fn is_empty(&self) -> bool {
-        self.cursors().is_empty()
+        let head = self.head.get();
+        let index = self.inner.buffer.index(head);
+        let slot = self.inner.buffer.get(index);
+        let stamp = slot.load_stamp();
+        // Empty if stamp == head (no data yet)
+        stamp == head
     }
 
     /// Returns approximate number of items in the channel.
     ///
-    /// Note: This is approximate as it reads both cursors non-atomically.
+    /// Scans slots starting from head to count consecutive items with data.
+    /// This is O(min(count, N)) but typically fast for small queues.
     pub fn len(&self) -> usize {
-        self.cursors().remaining()
+        let head = self.head.get();
+        let mut count = 0;
+
+        while count < N {
+            let seq = head.wrapping_add(count);
+            let index = self.inner.buffer.index(seq);
+            let slot = self.inner.buffer.get(index);
+            let stamp = slot.load_stamp();
+
+            // Check if slot has data: stamp == seq + 1
+            if stamp == seq.wrapping_add(1) {
+                count += 1;
+            } else {
+                break;
+            }
+        }
+
+        count
     }
 
     /// Drains up to `max` available items from the channel.
     ///
-    /// Returns an iterator that yields `min(max, available)` items. The `&mut self`
-    /// borrow prevents concurrent access to the receiver until the `Drain` is dropped.
+    /// Returns an iterator that yields items. The `&mut self` borrow prevents
+    /// concurrent access to the receiver until the `Drain` is dropped.
     ///
     /// # Performance
     ///
-    /// With per-slot stamps, each item read updates its slot stamp individually.
-    /// However, the head cursor is only updated once on drop, batching that update.
-    ///
-    /// The trade-off: the producer won't see freed slots until the `Drain` drops
-    /// AND the slot stamps are updated. With per-slot stamps, the producer can
-    /// actually see individual slots become available as they're read.
+    /// With per-slot stamps, each item read updates its slot stamp individually,
+    /// allowing the producer to see freed slots immediately.
     ///
     /// # Behavior
     ///
-    /// - Yields only items available at construction (snapshot semantics via cursor check)
+    /// - Yields items as long as slots have data (lazy evaluation)
     /// - Does not signal disconnection — check [`is_closed()`](Self::is_closed) after
     /// - Panic-safe: consumed items are committed even if iteration panics
     ///
@@ -159,35 +176,10 @@ impl<T, const N: usize> Receiver<T, N> {
     /// ```
     #[inline]
     pub fn drain(&mut self, max: usize) -> Drain<'_, T, N> {
-        let cursors = self.cursors();
-        let original_head = cursors.head;
-
-        // Clamp tail so we yield at most `max` items.
-        // Compare counts (not raw sequence numbers) to handle wrap-around.
-        let available = cursors.remaining();
-        let limit = if max < available {
-            original_head.wrapping_add(max)
-        } else {
-            cursors.tail
-        };
-
         Drain {
             rx: self,
-            original_head,
-            current_head: original_head,
-            limit,
+            remaining: max,
         }
-    }
-
-    /// Returns the `head` and `tail` of the channel.
-    ///
-    /// Used for len() and is_empty() checks. For actual recv operations,
-    /// we use per-slot stamps instead.
-    fn cursors(&self) -> Cursors {
-        // Both loads are Relaxed since this is just an approximate snapshot
-        let head = self.inner.head.load(Ordering::Relaxed);
-        let tail = self.inner.tail.load(Ordering::Relaxed);
-        Cursors { head, tail }
     }
 }
 
@@ -207,40 +199,24 @@ unsafe impl<T: Send, const N: usize> Send for Receiver<T, N> {}
 /// Draining iterator created by [`Receiver::drain()`].
 ///
 /// Reads items using per-slot stamps for synchronization.
-/// On drop, commits the final head position.
+/// Each item consumed immediately frees its slot for the producer.
 pub struct Drain<'a, T, const N: usize> {
     rx: &'a mut Receiver<T, N>,
-    /// Head at construction; used to detect if anything was consumed.
-    original_head: usize,
-    /// Current head position (advances during iteration).
-    current_head: usize,
-    /// Upper limit (exclusive) for this drain.
-    limit: usize,
+    /// Maximum items remaining to drain.
+    remaining: usize,
 }
 
 impl<T, const N: usize> Drain<'_, T, N> {
-    /// Writes the current head back to the channel.
-    /// Skipped if nothing was consumed.
-    #[inline]
-    fn commit_head(&self) {
-        if self.original_head != self.current_head {
-            self.rx
-                .inner
-                .head
-                .store(self.current_head, Ordering::Relaxed);
-        }
-    }
-
     /// Returns `true` if the sender has dropped.
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.rx.is_closed()
     }
 
-    /// Returns how many items are left in this drain.
+    /// Returns how many items we're still allowed to drain (upper bound).
     #[inline]
     pub fn remaining(&self) -> usize {
-        self.limit.wrapping_sub(self.current_head)
+        self.remaining
     }
 }
 
@@ -249,11 +225,11 @@ impl<T, const N: usize> Iterator for Drain<'_, T, N> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_head == self.limit {
+        if self.remaining == 0 {
             return None;
         }
 
-        let head = self.current_head;
+        let head = self.rx.head.get();
         let index = self.rx.inner.buffer.index(head);
         let slot = self.rx.inner.buffer.get(index);
 
@@ -262,32 +238,26 @@ impl<T, const N: usize> Iterator for Drain<'_, T, N> {
 
         if stamp == head.wrapping_add(1) {
             // Data is ready
-            // Safety: stamp == head + 1 means sender wrote this slot
             let value = unsafe { slot.read() };
 
             // Release: signal slot is ready for next write lap
             slot.store_stamp(head.wrapping_add(N));
 
-            self.current_head = head.wrapping_add(1);
+            // Advance head cursor
+            self.rx.head.set(head.wrapping_add(1));
+            self.remaining -= 1;
+
             Some(value)
         } else {
-            // No more data available (shouldn't happen within limit, but be safe)
+            // No more data available
             None
         }
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let r = self.remaining();
-        (r, Some(r))
-    }
-}
-
-impl<T, const N: usize> ExactSizeIterator for Drain<'_, T, N> {}
-
-impl<T, const N: usize> Drop for Drain<'_, T, N> {
-    fn drop(&mut self) {
-        self.commit_head();
+        // Lower bound is 0 (might be empty), upper bound is remaining
+        (0, Some(self.remaining))
     }
 }
 
@@ -295,6 +265,7 @@ impl<T, const N: usize> Drop for Drain<'_, T, N> {
 mod r#async {
 
     use std::{
+        future::Future,
         pin::Pin,
         task::{Context, Poll, Waker},
     };
@@ -338,8 +309,7 @@ mod r#async {
                     self.register_waker(cx.waker());
 
                     // Double-check: see if data became available
-                    // With slot stamps, we check the slot at current head
-                    let head = self.receiver.inner.head.load(Ordering::Relaxed);
+                    let head = self.receiver.head.get();
                     let index = self.receiver.inner.buffer.index(head);
                     let slot = self.receiver.inner.buffer.get(index);
                     let stamp = slot.load_stamp();
