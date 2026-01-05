@@ -34,7 +34,7 @@ jobs:
         env:
           # Pin to a specific version for reproducibility
           # Check https://github.com/fedemagnani/git-bench/tags for available versions
-          GIT_BENCH_VERSION: "v0.0.1-alpha.6"
+          GIT_BENCH_VERSION: "v0.0.1-alpha.7"
         run: |
           cargo install --git https://github.com/fedemagnani/git-bench --tag $GIT_BENCH_VERSION git-bench
           
