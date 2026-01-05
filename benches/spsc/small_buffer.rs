@@ -15,7 +15,7 @@ use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
-use veloce::spsc::channel;
+use veloce::spsc::lamport::channel;
 
 const TOTAL_MESSAGES: usize = 100_000;
 const SMALL_BUFFER: usize = 64;

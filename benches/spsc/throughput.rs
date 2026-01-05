@@ -16,7 +16,7 @@ pub use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::TryRecvError;
 pub use std::sync::mpsc::sync_channel as std_sync_channel;
 pub use test::Bencher;
-pub use veloce::spsc::channel;
+pub use veloce::spsc::lamport::channel;
 
 pub const BUFFER_SIZE: usize = 1024;
 pub const TOTAL_MESSAGES: usize = 100_000;
@@ -67,7 +67,7 @@ fn veloce_try(b: &mut Bencher) {
                     loop {
                         match tx.try_send(i as i32) {
                             Ok(()) => break,
-                            Err(veloce::spsc::TrySendErr::Full(_)) => {
+                            Err(veloce::spsc::lamport::TrySendErr::Full(_)) => {
                                 std::hint::spin_loop();
                             }
                             Err(e) => panic!("{:?}", e),

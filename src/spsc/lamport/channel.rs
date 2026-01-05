@@ -11,7 +11,7 @@ use crossbeam_utils::CachePadded;
 
 use crate::{
     ring::RingBuffer,
-    spsc::{receiver::Receiver, sender::Sender},
+    spsc::lamport::{receiver::Receiver, sender::Sender},
 };
 
 #[cfg(feature = "async")]
@@ -99,7 +99,7 @@ impl<T, const N: usize> Drop for Channel<T, N> {
             unsafe {
                 let i = self.buffer.index(head.wrapping_add(s));
                 // Safe: these slots are initialized (producer wrote, consumer didn't read)
-                self.buffer.drop(i);
+                self.buffer.drop_in_place(i);
             }
         }
     }

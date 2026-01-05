@@ -1,54 +1,62 @@
-use crate::spsc::{Channel, Cursors, TrySendErr};
+use crate::ring::Storable;
+
+use super::{Channel, TrySendErr};
 use std::{
     cell::Cell,
-    marker::PhantomData,
     sync::{Arc, atomic::Ordering},
 };
 
 #[cfg(feature = "async")]
 pub use r#async::SendFuture;
+use crossbeam_utils::CachePadded;
+
 pub struct Sender<T, const N: usize> {
-    pub(super) inner: Arc<Channel<T, N>>,
-    _not_clone: PhantomData<Cell<()>>, //marker type to avoid cloning implementations
+    pub(super) inner: CachePadded<Arc<Channel<T, N>>>,
+    /// Local tail cursor - only modified by this sender.
+    tail: Cell<usize>,
 }
 
 impl<T, const N: usize> Sender<T, N> {
     pub(super) fn new(inner: Arc<Channel<T, N>>) -> Self {
         Self {
-            inner,
-            _not_clone: PhantomData,
+            inner: CachePadded::new(inner),
+            tail: Cell::new(0),
         }
     }
 
-    /// Producer pushes a new value in the buffer
+    /// Producer pushes a new value in the buffer using per-slot stamps (Vyukov algorithm).
+    ///
+    /// Protocol:
+    /// - Check slot stamp: if stamp == tail, slot is ready for writing
+    /// - Write value, then set stamp = tail + 1 (signals "data ready")
+    /// - Advance local tail cursor
     pub fn try_send(&self, value: T) -> Result<(), TrySendErr<T>> {
         if self.is_closed() {
             return Err(TrySendErr::Disconnected(value));
         }
 
-        let c = self.cursors();
-        let tail = c.tail;
+        let tail = self.tail.get();
+        let index = self.inner.buffer.index(tail);
+        let slot = self.inner.buffer.get(index);
 
-        if tail.wrapping_sub(c.head) >= N {
-            // slow consumer
-            return Err(TrySendErr::Full(value));
+        // Acquire: synchronize with receiver's Release store after reading
+        let stamp = slot.load_stamp();
+
+        if stamp == tail {
+            // Slot is ready for writing
+            unsafe { slot.write(value) };
+
+            // Release: make the write visible before signaling "data ready"
+            slot.store_stamp(tail.wrapping_add(1));
+
+            // Advance local tail (Relaxed: we're the only writer)
+            self.tail.set(tail.wrapping_add(1));
+
+            Ok(())
+        } else {
+            // Buffer is full: receiver hasn't consumed this slot from the previous lap yet
+            Err(TrySendErr::Full(value))
         }
-
-        let i = self.inner.buffer.index(tail);
-
-        // # Safety
-        //
-        // This assumes that every read *moves* the value out of the slot.
-        // Therefore, the value must NOT be dropped in place.
-        // If a read only borrows the value and the producer later overwrites this slot,
-        // the destructor of the previous value would never run, resulting in a memory leak.
-
-        unsafe { self.inner.buffer.write(i, value) };
-
-        // release-store: make sure that acquire-loads see also the previous writings on the buffer
-        self.inner.tail.store(tail + 1, Ordering::Release);
-
-        Ok(())
     }
 
     /// Producer pushes a new value into the buffer using a busy-spin strategy.
@@ -97,21 +105,6 @@ impl<T, const N: usize> Sender<T, N> {
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
-
-    /// Returns the `head` and `tail` of the channel.
-    ///
-    /// The `head` is retrieved first via relaxed load to early exit if there is no new data,
-    /// then via [`Ordering::Acquire`]: it shouldn't be called more than once
-    fn cursors(&self) -> Cursors {
-        // Single producer: the only one controlling the tail
-        let tail = self.inner.tail.load(Ordering::Relaxed);
-
-        // New space available, need acquire-load: acquire ownership of the head and observe all writes
-        // performed by the previous owner (consumer) via release-store
-        let head = self.inner.head.load(Ordering::Acquire);
-
-        Cursors { head, tail }
-    }
 }
 
 impl<T, const N: usize> Drop for Sender<T, N> {
@@ -130,6 +123,7 @@ unsafe impl<T: Send, const N: usize> Send for Sender<T, N> {}
 #[cfg(feature = "async")]
 mod r#async {
     use std::{
+        future::Future,
         pin::Pin,
         task::{Context, Poll, Waker},
     };
@@ -186,13 +180,14 @@ mod r#async {
                     // we store the waker for future polls
                     self.register_waker(cx.waker());
 
-                    // We give a second shot to see if we should be woken up immediately
-                    let head = self.sender.inner.head.load(Ordering::Acquire);
-                    let tail = self.sender.inner.tail.load(Ordering::Relaxed);
+                    // Double-check: see if space became available
+                    let tail = self.sender.tail.get();
+                    let index = self.sender.inner.buffer.index(tail);
+                    let slot = self.sender.inner.buffer.get(index);
+                    let stamp = slot.load_stamp();
 
-                    // Check if consumer freed some space in the meanwhile
-                    if tail.wrapping_sub(head) < N {
-                        // Channel is not full anymore, self-wake to try another send attempt (via the waker just registered)
+                    if stamp == tail {
+                        // Slot is now ready, self-wake
                         cx.waker().wake_by_ref();
                     }
 

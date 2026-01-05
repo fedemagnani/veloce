@@ -17,7 +17,7 @@ use crossbeam_utils::thread::scope;
 use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use test::Bencher;
-use veloce::spsc::channel;
+use veloce::spsc::lamport::channel;
 
 const PING_PONG_ROUNDS: usize = 10_000;
 

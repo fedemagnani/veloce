@@ -5,7 +5,7 @@ pub trait Storable {
     type Item;
     unsafe fn write(&self, value: Self::Item);
     unsafe fn read(&self) -> Self::Item;
-    unsafe fn drop(&self);
+    unsafe fn drop_in_place(&self);
 }
 
 impl<T> Storable for UnsafeCell<MaybeUninit<T>> {
@@ -28,7 +28,7 @@ impl<T> Storable for UnsafeCell<MaybeUninit<T>> {
     ///
     /// the slot expects intialized data
     #[inline]
-    unsafe fn drop(&self) {
+    unsafe fn drop_in_place(&self) {
         unsafe {
             ptr::drop_in_place((*self.get()).as_mut_ptr());
         }
@@ -55,6 +55,12 @@ impl<T: Storable, const N: usize> RingBuffer<T, N> {
     const MODULO_MASK: usize = N - 1;
     const N_POWER_OF_2: bool = N.is_power_of_two();
     const N_POSITIVE: bool = N > 0;
+
+    /// Returns a reference to the value at the given index.
+    #[inline]
+    pub(crate) fn get(&self, index: usize) -> &T {
+        &self.0[index]
+    }
 
     #[inline]
     pub(crate) const fn index(&self, seq: usize) -> usize {
@@ -83,9 +89,9 @@ impl<T: Storable, const N: usize> RingBuffer<T, N> {
     ///
     /// - `i` is assumed to be an index of the inner slice
     #[inline]
-    pub(crate) unsafe fn drop(&self, i: usize) {
+    pub(crate) unsafe fn drop_in_place(&self, i: usize) {
         let cell = &self.0[i];
-        unsafe { cell.drop() }
+        unsafe { cell.drop_in_place() }
     }
 }
 
@@ -104,7 +110,7 @@ mod ring_test {
     #[test]
     fn test_rw() {
         const N: usize = 2;
-        let ring = RingBuffer::<_, N>::default();
+        let ring = RingBuffer::<UnsafeCell<MaybeUninit<_>>, N>::default();
         let seq = 0;
         let i = ring.index(seq);
         let val = 28392;
