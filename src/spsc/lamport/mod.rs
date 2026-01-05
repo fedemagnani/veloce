@@ -43,8 +43,8 @@
 //!
 //! With the `async` feature, [`send()`](Sender::send) and [`recv()`](Receiver::recv)
 //! return futures that poll the underlying lock-free operations. The futures
-//! themselves make no OS calls—whether the OS is involved depends on your runtime
-
+//! themselves make no OS calls—whether the OS is involved depends on your runtime.
+//!
 //! ## Example
 //!
 //!```rust

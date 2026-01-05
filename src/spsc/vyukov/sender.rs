@@ -46,11 +46,13 @@ impl<T, const N: usize> Sender<T, N> {
             // Slot is ready for writing
             unsafe { slot.write(value) };
 
+            let new_tail = tail.wrapping_add(1);
+
             // Release: make the write visible before signaling "data ready"
-            slot.store_stamp(tail.wrapping_add(1));
+            slot.store_stamp(new_tail);
 
             // Advance local tail (Relaxed: we're the only writer)
-            self.tail.set(tail.wrapping_add(1));
+            self.tail.set(new_tail);
 
             Ok(())
         } else {

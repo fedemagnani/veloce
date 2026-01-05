@@ -1,4 +1,70 @@
 //! Vyukov-style SPSC Channel
+//!
+//! A bounded, single-producer single-consumer (SPSC) channel implemented using
+//! a lock-free ring buffer with per-slot sequence stamps (Vyukov's algorithm).
+//!
+//! ## How It Works
+//!
+//!```text
+//!     Slot 0    Slot 1    Slot 2    Slot 3
+//!   ┌─────────┬─────────┬─────────┬─────────┐
+//!   │ stamp=1 │ stamp=1 │ stamp=2 │ stamp=3 │  Ring Buffer (N = 4)
+//!   │ [data]  │ [empty] │ [empty] │ [empty] │
+//!   └─────────┴─────────┴─────────┴─────────┘
+//!       ↑          ↑
+//!     head=0     tail=1
+//!   (receiver)  (sender)
+//!```
+//!
+//! Each slot carries its own sequence stamp instead of shared head/tail atomics:
+//!
+//! - **Initial**: `stamp[i] = i` (slot `i` is ready for write at sequence `i`)
+//! - **After write**: `stamp = tail + 1` (signals "data ready for reader")
+//! - **After read**: `stamp = head + N` (signals "slot ready for next write lap")
+//!
+//! The sender and receiver maintain **local cursors** (non-atomic) and synchronize
+//! exclusively through per-slot stamps.
+//!
+//! ## Synchronization
+//!
+//! No locks or OS primitives are used. Synchronization relies on:
+//!
+//! | Operation | Memory Ordering | Purpose |
+//! |-----------|-----------------|---------|
+//! | Load slot stamp | `Acquire` | See writes by the other thread |
+//! | Store slot stamp | `Release` | Make our writes visible |
+//! | Local cursor access | Non-atomic | Single-threaded access |
+//!
+//! The `Acquire`/`Release` pairing on each slot ensures that:
+//! - when the consumer sees `stamp == head + 1`, it also sees the data the producer wrote
+//! - when the producer sees `stamp == tail`, it knows the consumer finished reading
+//!
+//! ## Cache Optimization
+//!
+//! The `Sender` and `Receiver` each wrap the shared channel `Arc` in
+//! [`CachePadded`](crossbeam_utils::CachePadded) to prevent false sharing
+//! of their local cursors with the shared channel pointer.
+//!
+//! ## Async Support
+//!
+//! With the `async` feature, [`send()`](Sender::send) and [`recv()`](Receiver::recv)
+//! return futures that poll the underlying lock-free operations. The futures
+//! themselves make no OS calls—whether the OS is involved depends on your runtime.
+//!
+//! ## Example
+//!
+//!```rust
+//! use veloce::spsc::vyukov::channel4;
+//!
+//! let (tx, rx) = channel4::<i32>();  // Buffer size must be power of 2
+//!
+//! tx.try_send(1).unwrap();
+//! tx.try_send(2).unwrap();
+//!
+//! assert_eq!(rx.try_recv().unwrap(), Some(1));
+//! assert_eq!(rx.try_recv().unwrap(), Some(2));
+//! assert_eq!(rx.try_recv().unwrap(), None);  // Empty
+//! ```
 
 mod channel;
 mod error;
