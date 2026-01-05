@@ -60,12 +60,10 @@
 //! assert_eq!(rx.try_recv().unwrap(), None);  // Empty
 //! ```
 mod channel;
-mod error;
 mod receiver;
 mod sender;
 
 use channel::Channel;
-pub use error::*;
 pub use receiver::Receiver;
 #[cfg(feature = "async")]
 pub use receiver::RecvFuture;
@@ -131,6 +129,8 @@ mod tests {
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::{sync::Arc, thread::sleep, time::Duration};
+
+    use crate::spsc::TrySendErr;
 
     use super::*;
 

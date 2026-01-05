@@ -1,4 +1,6 @@
-use super::{Channel, Cursors, TrySendErr};
+use crate::spsc::TrySendErr;
+
+use super::{Channel, Cursors};
 use std::{
     cell::Cell,
     marker::PhantomData,

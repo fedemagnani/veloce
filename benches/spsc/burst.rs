@@ -14,15 +14,29 @@ use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
-use veloce::spsc::lamport::channel;
+use veloce::spsc::lamport::channel as lamport_channel;
+use veloce::spsc::vyukov::channel as vyukov_channel;
 
 const BUFFER_SIZE: usize = 1024;
 
 const BURST_SIZE: usize = 512;
 
 #[bench]
-fn veloce(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        for i in 0..BURST_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        for _ in 0..BURST_SIZE {
+            test::black_box(rx.try_recv().unwrap());
+        }
+    });
+}
+
+#[bench]
+fn veloce_vyukov(b: &mut Bencher) {
+    let (tx, rx) = vyukov_channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
         for i in 0..BURST_SIZE {
             tx.try_send(i as i32).unwrap();
@@ -36,8 +50,23 @@ fn veloce(b: &mut Bencher) {
 /// Uses `drain()` to batch-receive all items with a single release-store.
 /// This is the ideal use case for drain: single-threaded batch processing.
 #[bench]
-fn veloce_drain(b: &mut Bencher) {
-    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_drain(b: &mut Bencher) {
+    let (tx, mut rx) = lamport_channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        for i in 0..BURST_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        for v in rx.drain(BURST_SIZE) {
+            test::black_box(v);
+        }
+    });
+}
+
+/// Uses `drain()` to batch-receive all items with a single release-store.
+/// This is the ideal use case for drain: single-threaded batch processing.
+#[bench]
+fn veloce_vyukov_drain(b: &mut Bencher) {
+    let (tx, mut rx) = vyukov_channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
         for i in 0..BURST_SIZE {
             tx.try_send(i as i32).unwrap();
@@ -50,8 +79,24 @@ fn veloce_drain(b: &mut Bencher) {
 
 /// Drain with larger batch to show scalability.
 #[bench]
-fn veloce_drain_full(b: &mut Bencher) {
-    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_drain_full(b: &mut Bencher) {
+    let (tx, mut rx) = lamport_channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        // Fill entire buffer
+        for i in 0..BUFFER_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        // Drain all at once
+        for v in rx.drain(BUFFER_SIZE) {
+            test::black_box(v);
+        }
+    });
+}
+
+/// Drain with larger batch to show scalability.
+#[bench]
+fn veloce_vyukov_drain_full(b: &mut Bencher) {
+    let (tx, mut rx) = vyukov_channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
         // Fill entire buffer
         for i in 0..BUFFER_SIZE {

@@ -14,14 +14,24 @@ use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
-use veloce::spsc::lamport::channel;
+use veloce::spsc::lamport::channel as lamport_channel;
+use veloce::spsc::vyukov::channel as vyukov_channel;
 
 const BUFFER_SIZE: usize = 1024;
 const BATCH_SIZE: usize = 64;
 
 #[bench]
-fn veloce(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        tx.try_send(42).unwrap();
+        rx.try_recv().unwrap()
+    });
+}
+
+#[bench]
+fn veloce_vyukov(b: &mut Bencher) {
+    let (tx, rx) = vyukov_channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
         tx.try_send(42).unwrap();
         rx.try_recv().unwrap()
@@ -31,8 +41,23 @@ fn veloce(b: &mut Bencher) {
 /// Batched send/drain to show amortized per-item cost.
 /// Dividing the result by BATCH_SIZE gives per-item overhead.
 #[bench]
-fn veloce_batch(b: &mut Bencher) {
-    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_batch(b: &mut Bencher) {
+    let (tx, mut rx) = lamport_channel::<i32, BUFFER_SIZE>();
+    b.iter(|| {
+        for i in 0..BATCH_SIZE {
+            tx.try_send(i as i32).unwrap();
+        }
+        for v in rx.drain(BATCH_SIZE) {
+            test::black_box(v);
+        }
+    });
+}
+
+/// Batched send/drain to show amortized per-item cost.
+/// Dividing the result by BATCH_SIZE gives per-item overhead.
+#[bench]
+fn veloce_vyukov_batch(b: &mut Bencher) {
+    let (tx, mut rx) = vyukov_channel::<i32, BUFFER_SIZE>();
     b.iter(|| {
         for i in 0..BATCH_SIZE {
             tx.try_send(i as i32).unwrap();

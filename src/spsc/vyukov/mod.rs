@@ -67,12 +67,10 @@
 //! ```
 
 mod channel;
-mod error;
 mod receiver;
 mod sender;
 
 use channel::Channel;
-pub use error::*;
 #[cfg(feature = "async")]
 pub use receiver::RecvFuture;
 pub use receiver::{Drain, Receiver};
@@ -114,7 +112,7 @@ define_size_aliases!(2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
 
 #[cfg(test)]
 mod tests {
-
+    use crate::spsc::TrySendErr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::{sync::Arc, thread::sleep, time::Duration};
 
@@ -185,7 +183,7 @@ mod tests {
 
         for w in words {
             'i: loop {
-                if let Ok(Some(out)) = rx.try_recv() {
+                if let Ok(out) = rx.try_recv() {
                     assert_eq!(out, w);
                     break 'i;
                 }

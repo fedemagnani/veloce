@@ -4,7 +4,9 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use super::{Cursors, TryRecvError, channel::Channel};
+use crate::spsc::TryRecvError;
+
+use super::{Cursors, channel::Channel};
 
 #[cfg(feature = "async")]
 pub use r#async::RecvFuture;
@@ -28,7 +30,7 @@ impl<T, const N: usize> Receiver<T, N> {
         if cursors.is_empty() {
             // Disconnection check happens only when we are sure that there are no more messages to read
             if self.is_closed() {
-                return Err(TryRecvError);
+                return Err(TryRecvError::Disconnected);
             }
 
             return Ok(None);

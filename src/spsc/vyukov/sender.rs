@@ -1,6 +1,6 @@
+use super::Channel;
 use crate::ring::Storable;
-
-use super::{Channel, TrySendErr};
+use crate::spsc::TrySendErr;
 use std::{
     cell::Cell,
     sync::{Arc, atomic::Ordering},

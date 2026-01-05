@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
+use super::Channel;
 use crate::ring::Storable;
-
-use super::{Channel, TryRecvError};
+use crate::spsc::TryRecvError;
 
 #[cfg(feature = "async")]
 pub use r#async::RecvFuture;
@@ -31,7 +31,7 @@ impl<T, const N: usize> Receiver<T, N> {
     /// - Check slot stamp: if stamp == head + 1, data is ready
     /// - Read value, then set stamp = head + N (signals "slot ready for next write lap")
     /// - Advance local head cursor
-    pub fn try_recv(&self) -> Result<Option<T>, TryRecvError> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let head = self.head.get();
         let index = self.inner.buffer.index(head);
         let slot = self.inner.buffer.get(index);
@@ -49,7 +49,7 @@ impl<T, const N: usize> Receiver<T, N> {
             // Advance local head (Relaxed: we're the only writer)
             self.head.set(head.wrapping_add(1));
 
-            return Ok(Some(value));
+            return Ok(value);
         }
 
         // Buffer is empty: stamp == head means no data written yet
@@ -57,7 +57,7 @@ impl<T, const N: usize> Receiver<T, N> {
         if self.is_closed() {
             return Err(TryRecvError::Disconnected);
         }
-        Ok(None)
+        Err(TryRecvError::Empty)
     }
 
     /// Receiver retrieves a new value from the buffer using a busy-spin strategy.
@@ -71,11 +71,9 @@ impl<T, const N: usize> Receiver<T, N> {
     pub fn recv_spin(&self) -> Result<T, TryRecvError> {
         loop {
             match self.try_recv() {
-                Ok(Some(v)) => return Ok(v),
-                Err(e) => return Err(e),
-                Ok(None) => {
-                    std::hint::spin_loop();
-                }
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => std::hint::spin_loop(),
+                Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected),
             }
         }
     }
@@ -298,12 +296,12 @@ mod r#async {
         type Output = Result<T, TryRecvError>;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             match self.receiver.try_recv() {
-                Ok(Some(v)) => {
+                Ok(v) => {
                     // Consume a value from the buffer, waking sender who might be waiting
                     self.wake_sender();
                     Poll::Ready(Ok(v))
                 }
-                Ok(None) => {
+                Err(TryRecvError::Empty) => {
                     // Register waker for future polls
                     self.register_waker(cx.waker());
 

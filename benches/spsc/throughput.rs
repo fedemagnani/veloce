@@ -16,14 +16,14 @@ pub use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::TryRecvError;
 pub use std::sync::mpsc::sync_channel as std_sync_channel;
 pub use test::Bencher;
-pub use veloce::spsc::lamport::channel;
+pub use veloce::spsc::lamport::channel as lamport_channel;
 
 pub const BUFFER_SIZE: usize = 1024;
 pub const TOTAL_MESSAGES: usize = 100_000;
 
 #[bench]
-fn veloce_spin(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_spin(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);
@@ -53,8 +53,8 @@ fn veloce_spin(b: &mut Bencher) {
 }
 
 #[bench]
-fn veloce_try(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, BUFFER_SIZE>();
+fn veloce_lamport_try(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);
@@ -67,7 +67,7 @@ fn veloce_try(b: &mut Bencher) {
                     loop {
                         match tx.try_send(i as i32) {
                             Ok(()) => break,
-                            Err(veloce::spsc::lamport::TrySendErr::Full(_)) => {
+                            Err(veloce::spsc::TrySendErr::Full(_)) => {
                                 std::hint::spin_loop();
                             }
                             Err(e) => panic!("{:?}", e),
@@ -104,10 +104,10 @@ fn veloce_try(b: &mut Bencher) {
 /// - Single-threaded batch processing (see burst benchmark)
 /// - Bursty producer patterns where consumer processes between bursts
 #[bench]
-fn veloce_drain(b: &mut Bencher) {
+fn veloce_lamport_drain(b: &mut Bencher) {
     const DRAIN_BATCH: usize = 256;
 
-    let (tx, mut rx) = channel::<i32, BUFFER_SIZE>();
+    let (tx, mut rx) = lamport_channel::<i32, BUFFER_SIZE>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);

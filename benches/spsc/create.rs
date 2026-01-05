@@ -8,12 +8,18 @@ use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
-use veloce::spsc::lamport::channel;
+use veloce::spsc::lamport::channel as lamport_channel;
+use veloce::spsc::vyukov::channel as vyukov_channel;
 const BUFFER_SIZE: usize = 1024;
 
 #[bench]
-fn veloce(b: &mut Bencher) {
-    b.iter(channel::<i32, BUFFER_SIZE>);
+fn veloce_lamport(b: &mut Bencher) {
+    b.iter(lamport_channel::<i32, BUFFER_SIZE>);
+}
+
+#[bench]
+fn veloce_vyukov(b: &mut Bencher) {
+    b.iter(vyukov_channel::<i32, BUFFER_SIZE>);
 }
 
 #[bench]
