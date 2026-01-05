@@ -1,0 +1,386 @@
+//! Vyukov-style SPSC Channel
+//!
+//! A bounded, single-producer single-consumer (SPSC) channel implemented using
+//! a lock-free ring buffer with per-slot sequence stamps (Vyukov's algorithm).
+//!
+//! ## How It Works
+//!
+//!```text
+//!     Slot 0    Slot 1    Slot 2    Slot 3
+//!   ┌─────────┬─────────┬─────────┬─────────┐
+//!   │ stamp=1 │ stamp=1 │ stamp=2 │ stamp=3 │  Ring Buffer (N = 4)
+//!   │ [data]  │ [empty] │ [empty] │ [empty] │
+//!   └─────────┴─────────┴─────────┴─────────┘
+//!       ↑          ↑
+//!     head=0     tail=1
+//!   (receiver)  (sender)
+//!```
+//!
+//! Each slot carries its own sequence stamp instead of shared head/tail atomics:
+//!
+//! - **Initial**: `stamp[i] = i` (slot `i` is ready for write at sequence `i`)
+//! - **After write**: `stamp = tail + 1` (signals "data ready for reader")
+//! - **After read**: `stamp = head + N` (signals "slot ready for next write lap")
+//!
+//! The sender and receiver maintain **local cursors** (non-atomic) and synchronize
+//! exclusively through per-slot stamps.
+//!
+//! ## Synchronization
+//!
+//! No locks or OS primitives are used. Synchronization relies on:
+//!
+//! | Operation | Memory Ordering | Purpose |
+//! |-----------|-----------------|---------|
+//! | Load slot stamp | `Acquire` | See writes by the other thread |
+//! | Store slot stamp | `Release` | Make our writes visible |
+//! | Local cursor access | Non-atomic | Single-threaded access |
+//!
+//! The `Acquire`/`Release` pairing on each slot ensures that:
+//! - when the consumer sees `stamp == head + 1`, it also sees the data the producer wrote
+//! - when the producer sees `stamp == tail`, it knows the consumer finished reading
+//!
+//! ## Cache Optimization
+//!
+//! The `Sender` and `Receiver` each wrap the shared channel `Arc` in
+//! [`CachePadded`](crossbeam_utils::CachePadded) to prevent false sharing
+//! of their local cursors with the shared channel pointer.
+//!
+//! ## Async Support
+//!
+//! With the `async` feature, [`send()`](Sender::send) and [`recv()`](Receiver::recv)
+//! return futures that poll the underlying lock-free operations. The futures
+//! themselves make no OS calls—whether the OS is involved depends on your runtime.
+//!
+//! ## Example
+//!
+//!```rust
+//! use veloce::spsc::vyukov::channel4;
+//!
+//! let (tx, rx) = channel4::<i32>();  // Buffer size must be power of 2
+//!
+//! tx.try_send(1).unwrap();
+//! tx.try_send(2).unwrap();
+//!
+//! assert_eq!(rx.try_recv().unwrap(), Some(1));
+//! assert_eq!(rx.try_recv().unwrap(), Some(2));
+//! assert_eq!(rx.try_recv().unwrap(), None);  // Empty
+//! ```
+
+mod channel;
+mod receiver;
+mod sender;
+
+use channel::Channel;
+#[cfg(feature = "async")]
+pub use receiver::RecvFuture;
+pub use receiver::{Drain, Receiver};
+#[cfg(feature = "async")]
+pub use sender::SendFuture;
+pub use sender::Sender;
+mod slot;
+
+pub fn channel<T, const N: usize>() -> (Sender<T, N>, Receiver<T, N>) {
+    Channel::default().split()
+}
+
+/// Generates type aliases for common buffer sizes.
+///
+/// Creates types like `Sender2<T>`, `channel16<T>`, `Receiver64<T>`, etc.
+macro_rules! define_size_aliases {
+    ($($n:literal),* $(,)?) => {
+        paste::paste! {
+            $(
+                pub type [<Sender $n>]<T> = Sender<T, $n>;
+                pub type [<Receiver $n>]<T> = Receiver<T, $n>;
+
+                #[cfg(feature = "async")]
+                pub type [<SendFuture $n>]<'a, T> = SendFuture<'a, T, $n>;
+                #[cfg(feature = "async")]
+                pub type [<RecvFuture $n>]<'a, T> = RecvFuture<'a, T, $n>;
+
+                /// Creates a channel with specific buffer size .
+                pub fn [<channel $n>]<T>() -> ([<Sender $n>]<T>, [<Receiver $n>]<T>) {
+                    channel::<T, $n>()
+                }
+            )*
+        }
+    };
+}
+
+// Generate aliases for powers of 2
+define_size_aliases!(2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192);
+
+#[cfg(test)]
+mod tests {
+    use crate::spsc::TrySendErr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{sync::Arc, thread::sleep, time::Duration};
+
+    use super::*;
+
+    /// When buffer is full, sender shouldn't be capable to push a new value
+    #[test]
+    fn test_full() {
+        const N: usize = 4;
+        let (tx, _rx) = channel::<(), N>();
+        for _ in 0..N {
+            tx.try_send(()).unwrap();
+        }
+        let err = tx.try_send(()).expect_err("should err");
+        assert!(matches!(err, TrySendErr::Full(..)))
+    }
+
+    /// When one of the two half drops, the channels should me marked as disconnected
+    #[test]
+    fn test_disconnected() {
+        let (tx, rx) = channel::<(), 16>();
+        assert!(!tx.is_closed());
+        assert!(!rx.is_closed());
+
+        let (tx, ..) = channel::<(), 16>();
+        assert!(tx.is_closed());
+
+        let (.., rx) = channel::<(), 16>();
+        assert!(rx.is_closed());
+    }
+
+    /// The consumer should be capable to read all the buffered messages, even if producer dropped
+    #[test]
+    fn test_proper_consumption() {
+        const N: usize = 4;
+        let (tx, rx) = channel::<(), N>();
+        for _ in 0..N {
+            tx.try_send(()).unwrap();
+        }
+
+        drop(tx);
+
+        for _ in 0..N {
+            rx.try_recv().unwrap();
+        }
+
+        rx.try_recv().expect_err("should err");
+    }
+
+    /// Inter-thread communication check
+    #[test]
+    fn test_channel() {
+        let (tx, rx) = channel::<_, 2>();
+
+        let words = [
+            String::from("hello"),
+            String::from("world"),
+            String::from("!"),
+        ];
+
+        let words_c = words.clone();
+        std::thread::spawn(move || {
+            for w in words_c {
+                tx.try_send(w).unwrap();
+                sleep(Duration::from_nanos(1));
+            }
+        });
+
+        for w in words {
+            'i: loop {
+                if let Ok(out) = rx.try_recv() {
+                    assert_eq!(out, w);
+                    break 'i;
+                }
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct DropCounter(Arc<AtomicUsize>);
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    // Make sure that, when channel is dropped, the buffered elements are dropped as well (no memory leak)
+    #[test]
+    fn test_drop_unread_items() {
+        let inner: AtomicUsize = AtomicUsize::new(0);
+        let inner = Arc::new(inner);
+        let dropper = DropCounter(inner.clone());
+
+        {
+            let (tx, rx) = channel::<DropCounter, 4>();
+            tx.try_send(dropper.clone()).unwrap();
+            tx.try_send(dropper).unwrap();
+            drop(rx);
+            drop(tx);
+        }
+        assert_eq!(inner.load(Ordering::SeqCst), 2);
+    }
+
+    /// Test the async strategy
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_async_channel() {
+        let (tx, rx) = channel::<i32, 8>();
+
+        let handle = tokio::spawn(async move {
+            for i in 0..10 {
+                tx.send(i).await.unwrap();
+            }
+        });
+
+        for i in 0..10 {
+            assert_eq!(rx.recv().await.unwrap(), i);
+        }
+
+        handle.await.unwrap();
+    }
+
+    #[test]
+    fn test_drain_all() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![0, 1, 2, 3, 4]);
+        assert!(rx.is_empty());
+    }
+
+    #[test]
+    fn test_drain_with_max() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        // Drain only 3 of 5
+        let items: Vec<_> = rx.drain(3).collect();
+        assert_eq!(items, vec![0, 1, 2]);
+        assert_eq!(rx.len(), 2);
+
+        // Drain remaining
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![3, 4]);
+    }
+
+    #[test]
+    fn test_drain_empty() {
+        let (_tx, mut rx) = channel::<i32, 8>();
+        let items: Vec<_> = rx.drain(100).collect();
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_drain_partial_consume() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        // Consume only 2 items via early break
+        {
+            let mut drain = rx.drain(usize::MAX);
+            assert_eq!(drain.next(), Some(0));
+            assert_eq!(drain.next(), Some(1));
+            // drop drain here - should commit 2 items
+        }
+
+        // Remaining 3 items should still be there
+        assert_eq!(rx.len(), 3);
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn test_drain_remaining() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        for i in 0..5 {
+            tx.try_send(i).unwrap();
+        }
+
+        // Note: remaining() is now the max allowed, not exact count
+        let mut drain = rx.drain(usize::MAX);
+        assert_eq!(drain.remaining(), usize::MAX);
+
+        drain.next();
+        assert_eq!(drain.remaining(), usize::MAX - 1);
+
+        drain.next();
+        drain.next();
+        assert_eq!(drain.remaining(), usize::MAX - 3);
+    }
+
+    #[test]
+    fn test_drain_after_sender_dropped() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+        tx.try_send(2).unwrap();
+        drop(tx);
+
+        assert!(rx.is_closed());
+
+        // Should still drain buffered items
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_drain_non_copy_types() {
+        let (tx, mut rx) = channel::<String, 4>();
+        tx.try_send("hello".into()).unwrap();
+        tx.try_send("world".into()).unwrap();
+
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_drain_multiple_rounds() {
+        let (tx, mut rx) = channel::<i32, 4>();
+
+        // Round 1
+        tx.try_send(1).unwrap();
+        tx.try_send(2).unwrap();
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![1, 2]);
+
+        // Round 2 - buffer slots should be reusable
+        tx.try_send(3).unwrap();
+        tx.try_send(4).unwrap();
+        tx.try_send(5).unwrap();
+        let items: Vec<_> = rx.drain(usize::MAX).collect();
+        assert_eq!(items, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn test_drain_max_zero() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+
+        // max=0 should yield nothing
+        let items: Vec<_> = rx.drain(0).collect();
+        assert!(items.is_empty());
+
+        // Item should still be there
+        assert_eq!(rx.len(), 1);
+    }
+
+    #[test]
+    fn test_drain_is_closed() {
+        let (tx, mut rx) = channel::<i32, 8>();
+        tx.try_send(1).unwrap();
+
+        {
+            let drain = rx.drain(usize::MAX);
+            assert!(!drain.is_closed());
+        }
+
+        drop(tx);
+
+        {
+            let drain = rx.drain(usize::MAX);
+            assert!(drain.is_closed());
+        }
+    }
+}

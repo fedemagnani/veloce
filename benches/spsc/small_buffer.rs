@@ -15,15 +15,46 @@ use flume::bounded as flume_bounded;
 use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
-use veloce::spsc::channel;
+use veloce::spsc::lamport::channel as lamport_channel;
+use veloce::spsc::vyukov::channel as vyukov_channel;
 
 const TOTAL_MESSAGES: usize = 100_000;
 const SMALL_BUFFER: usize = 64;
 const DRAIN_BATCH: usize = 32;
 
 #[bench]
-fn veloce_spin(b: &mut Bencher) {
-    let (tx, rx) = channel::<i32, SMALL_BUFFER>();
+fn veloce_lamport_spin(b: &mut Bencher) {
+    let (tx, rx) = lamport_channel::<i32, SMALL_BUFFER>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send_spin(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+            for _ in 0..TOTAL_MESSAGES {
+                rx.recv_spin().unwrap();
+            }
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+#[bench]
+fn veloce_vyukov_spin(b: &mut Bencher) {
+    let (tx, rx) = vyukov_channel::<i32, SMALL_BUFFER>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);
@@ -54,8 +85,51 @@ fn veloce_spin(b: &mut Bencher) {
 /// Drain with small buffer: delayed head commit causes more producer stalls.
 /// Expected to be slower than spin due to backpressure.
 #[bench]
-fn veloce_drain(b: &mut Bencher) {
-    let (tx, mut rx) = channel::<i32, SMALL_BUFFER>();
+fn veloce_lamport_drain(b: &mut Bencher) {
+    let (tx, mut rx) = lamport_channel::<i32, SMALL_BUFFER>();
+
+    let (start_tx, start_rx) = crossbeam_bounded(0);
+    let (done_tx, done_rx) = crossbeam_bounded(0);
+
+    scope(|s| {
+        s.spawn(|_| {
+            while start_rx.recv().is_ok() {
+                for i in 0..TOTAL_MESSAGES {
+                    tx.send_spin(i as i32).unwrap();
+                }
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        b.iter(|| {
+            start_tx.send(()).unwrap();
+
+            let mut received = 0;
+            while received < TOTAL_MESSAGES {
+                let drain = rx.drain(DRAIN_BATCH);
+                if drain.remaining() == 0 {
+                    std::hint::spin_loop();
+                    continue;
+                }
+                for v in drain {
+                    test::black_box(v);
+                    received += 1;
+                }
+            }
+
+            done_rx.recv().unwrap();
+        });
+
+        drop(start_tx);
+    })
+    .unwrap();
+}
+
+/// Drain with small buffer: delayed head commit causes more producer stalls.
+/// Expected to be slower than spin due to backpressure.
+#[bench]
+fn veloce_vyukov_drain(b: &mut Bencher) {
+    let (tx, mut rx) = vyukov_channel::<i32, SMALL_BUFFER>();
 
     let (start_tx, start_rx) = crossbeam_bounded(0);
     let (done_tx, done_rx) = crossbeam_bounded(0);

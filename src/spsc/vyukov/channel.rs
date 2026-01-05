@@ -5,13 +5,11 @@ use std::sync::{
 
 use crossbeam_utils::CachePadded;
 
-use crate::{
-    ring::RingBuffer,
-    spsc::{receiver::Receiver, sender::Sender, slot::Slot},
-};
+use super::{receiver::Receiver, sender::Sender, slot::Slot};
+use crate::ring::RingBuffer;
 
 #[cfg(feature = "async")]
-use r#async::Wakers;
+use crate::spsc::r#async::Wakers;
 #[cfg(feature = "async")]
 use std::task::Waker;
 
@@ -183,7 +181,7 @@ mod tests {
 
         // Scenario: write 3 items, read 1, drop channel → should drop 2 remaining
         {
-            let (tx, rx) = crate::spsc::channel::<DropCounter, 4>();
+            let (tx, rx) = crate::spsc::vyukov::channel::<DropCounter, 4>();
 
             tx.try_send(DropCounter(drop_count.clone())).unwrap();
             tx.try_send(DropCounter(drop_count.clone())).unwrap();
@@ -218,7 +216,7 @@ mod tests {
         }
 
         {
-            let (tx, rx) = crate::spsc::channel::<DropCounter, 4>();
+            let (tx, rx) = crate::spsc::vyukov::channel::<DropCounter, 4>();
 
             // First lap: write 4, read 4
             for _ in 0..4 {
@@ -263,7 +261,7 @@ mod tests {
         }
 
         {
-            let (tx, rx) = crate::spsc::channel::<DropCounter, 4>();
+            let (tx, rx) = crate::spsc::vyukov::channel::<DropCounter, 4>();
             drop(tx);
             drop(rx);
         }
@@ -323,7 +321,7 @@ mod tests {
         }
 
         {
-            let (tx, rx) = crate::spsc::channel::<DropCounter, 4>();
+            let (tx, rx) = crate::spsc::vyukov::channel::<DropCounter, 4>();
 
             // First lap: write 4, read 4
             for _ in 0..4 {
@@ -363,7 +361,7 @@ mod tests {
         }
 
         {
-            let (tx, rx) = crate::spsc::channel::<DropCounter, 4>();
+            let (tx, rx) = crate::spsc::vyukov::channel::<DropCounter, 4>();
 
             // Fill the buffer completely
             for _ in 0..4 {
@@ -376,43 +374,5 @@ mod tests {
         }
 
         assert_eq!(drop_count.load(std::sync::atomic::Ordering::SeqCst), 4);
-    }
-}
-
-#[cfg(feature = "async")]
-mod r#async {
-    use super::*;
-
-    use futures::task::AtomicWaker;
-    pub(super) struct Wakers {
-        pub(super) sender_waker: CachePadded<AtomicWaker>,
-        pub(super) receiver_waker: CachePadded<AtomicWaker>,
-    }
-
-    impl Default for Wakers {
-        fn default() -> Self {
-            Self {
-                sender_waker: CachePadded::new(AtomicWaker::new()),
-                receiver_waker: CachePadded::new(AtomicWaker::new()),
-            }
-        }
-    }
-
-    impl Wakers {
-        pub(super) fn wake_sender(&self) {
-            self.sender_waker.wake()
-        }
-
-        pub(super) fn wake_receiver(&self) {
-            self.receiver_waker.wake()
-        }
-
-        pub(super) fn register_sender_waker(&self, waker: &Waker) {
-            self.sender_waker.register(waker);
-        }
-
-        pub(super) fn register_receiver_waker(&self, waker: &Waker) {
-            self.receiver_waker.register(waker);
-        }
     }
 }
