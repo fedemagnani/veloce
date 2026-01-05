@@ -1,5 +1,5 @@
 {
-  "last_update": "2025-12-30T00:26:08.152507893Z",
+  "last_update": "2026-01-05T00:35:05.395582962Z",
   "entries": {
     "veloce": [
       {
@@ -595,6 +595,341 @@
             "value": 1128541.69,
             "unit": "ns/iter",
             "range": "+/- 61676.87"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "id": "5b98eb9bf30806df24ae3cb0026bf87060f0df99",
+          "message": "Merge pull request #4 from fedemagnani/drain",
+          "timestamp": "2026-01-05T00:14:23Z",
+          "url": "https://github.com/fedemagnani/veloce/commit/5b98eb9bf30806df24ae3cb0026bf87060f0df99",
+          "author": {
+            "name": "Federico Magnani",
+            "email": "83358457+fedemagnani@users.noreply.github.com",
+            "username": "fedemagnani"
+          }
+        },
+        "date": "2026-01-05T00:35:05.232689907Z",
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "spsc::burst::crossbeam",
+            "value": 8771.37,
+            "unit": "ns/iter",
+            "range": "+/- 87.90"
+          },
+          {
+            "name": "spsc::burst::flume",
+            "value": 7663.49,
+            "unit": "ns/iter",
+            "range": "+/- 97.83"
+          },
+          {
+            "name": "spsc::burst::kanal",
+            "value": 3726.76,
+            "unit": "ns/iter",
+            "range": "+/- 70.93"
+          },
+          {
+            "name": "spsc::burst::std_sync",
+            "value": 9411.85,
+            "unit": "ns/iter",
+            "range": "+/- 130.98"
+          },
+          {
+            "name": "spsc::burst::veloce",
+            "value": 950.28,
+            "unit": "ns/iter",
+            "range": "+/- 9.34"
+          },
+          {
+            "name": "spsc::burst::veloce_drain",
+            "value": 657.3,
+            "unit": "ns/iter",
+            "range": "+/- 4.38"
+          },
+          {
+            "name": "spsc::burst::veloce_drain_full",
+            "value": 1299.36,
+            "unit": "ns/iter",
+            "range": "+/- 391.98"
+          },
+          {
+            "name": "spsc::create::crossbeam",
+            "value": 292.72,
+            "unit": "ns/iter",
+            "range": "+/- 2.22"
+          },
+          {
+            "name": "spsc::create::flume",
+            "value": 42.07,
+            "unit": "ns/iter",
+            "range": "+/- 0.53"
+          },
+          {
+            "name": "spsc::create::kanal",
+            "value": 79.6,
+            "unit": "ns/iter",
+            "range": "+/- 1.88"
+          },
+          {
+            "name": "spsc::create::std_sync",
+            "value": 290.68,
+            "unit": "ns/iter",
+            "range": "+/- 3.50"
+          },
+          {
+            "name": "spsc::create::veloce",
+            "value": 73.36,
+            "unit": "ns/iter",
+            "range": "+/- 0.80"
+          },
+          {
+            "name": "spsc::latency::crossbeam",
+            "value": 2586615.4,
+            "unit": "ns/iter",
+            "range": "+/- 84105.63"
+          },
+          {
+            "name": "spsc::latency::flume",
+            "value": 225379032.8,
+            "unit": "ns/iter",
+            "range": "+/- 19462881.30"
+          },
+          {
+            "name": "spsc::latency::kanal",
+            "value": 8399450.8,
+            "unit": "ns/iter",
+            "range": "+/- 85445.79"
+          },
+          {
+            "name": "spsc::latency::std_sync",
+            "value": 218035196.3,
+            "unit": "ns/iter",
+            "range": "+/- 19364223.86"
+          },
+          {
+            "name": "spsc::latency::veloce",
+            "value": 1898056.95,
+            "unit": "ns/iter",
+            "range": "+/- 14854.53"
+          },
+          {
+            "name": "spsc::oneshot::crossbeam",
+            "value": 313.09,
+            "unit": "ns/iter",
+            "range": "+/- 2.87"
+          },
+          {
+            "name": "spsc::oneshot::flume",
+            "value": 73.04,
+            "unit": "ns/iter",
+            "range": "+/- 1.19"
+          },
+          {
+            "name": "spsc::oneshot::kanal",
+            "value": 89.47,
+            "unit": "ns/iter",
+            "range": "+/- 3.48"
+          },
+          {
+            "name": "spsc::oneshot::std_sync",
+            "value": 308.16,
+            "unit": "ns/iter",
+            "range": "+/- 3.76"
+          },
+          {
+            "name": "spsc::oneshot::veloce",
+            "value": 84.96,
+            "unit": "ns/iter",
+            "range": "+/- 5.61"
+          },
+          {
+            "name": "spsc::seq_inout::crossbeam",
+            "value": 17.15,
+            "unit": "ns/iter",
+            "range": "+/- 13.32"
+          },
+          {
+            "name": "spsc::seq_inout::flume",
+            "value": 14.92,
+            "unit": "ns/iter",
+            "range": "+/- 0.98"
+          },
+          {
+            "name": "spsc::seq_inout::kanal",
+            "value": 8.15,
+            "unit": "ns/iter",
+            "range": "+/- 0.44"
+          },
+          {
+            "name": "spsc::seq_inout::std_sync",
+            "value": 18.65,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "spsc::seq_inout::veloce",
+            "value": 1.55,
+            "unit": "ns/iter",
+            "range": "+/- 0.01"
+          },
+          {
+            "name": "spsc::seq_inout::veloce_batch",
+            "value": 81.09,
+            "unit": "ns/iter",
+            "range": "+/- 0.34"
+          },
+          {
+            "name": "spsc::slow_consumer::light_crossbeam",
+            "value": 681885.33,
+            "unit": "ns/iter",
+            "range": "+/- 286100.47"
+          },
+          {
+            "name": "spsc::slow_consumer::light_drain",
+            "value": 72403.13,
+            "unit": "ns/iter",
+            "range": "+/- 2130.16"
+          },
+          {
+            "name": "spsc::slow_consumer::light_flume",
+            "value": 239648.78,
+            "unit": "ns/iter",
+            "range": "+/- 7201.09"
+          },
+          {
+            "name": "spsc::slow_consumer::light_kanal",
+            "value": 665570.33,
+            "unit": "ns/iter",
+            "range": "+/- 166257.17"
+          },
+          {
+            "name": "spsc::slow_consumer::light_spin",
+            "value": 421531.61,
+            "unit": "ns/iter",
+            "range": "+/- 70921.83"
+          },
+          {
+            "name": "spsc::slow_consumer::light_std",
+            "value": 246513.11,
+            "unit": "ns/iter",
+            "range": "+/- 26764.63"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_crossbeam",
+            "value": 999559.6,
+            "unit": "ns/iter",
+            "range": "+/- 9972.97"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_drain",
+            "value": 307638.18,
+            "unit": "ns/iter",
+            "range": "+/- 2471.13"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_flume",
+            "value": 555248.35,
+            "unit": "ns/iter",
+            "range": "+/- 10383.55"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_kanal",
+            "value": 909804.99,
+            "unit": "ns/iter",
+            "range": "+/- 251935.60"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_spin",
+            "value": 726707.6,
+            "unit": "ns/iter",
+            "range": "+/- 9077.68"
+          },
+          {
+            "name": "spsc::slow_consumer::medium_std",
+            "value": 1264560.91,
+            "unit": "ns/iter",
+            "range": "+/- 197227.83"
+          },
+          {
+            "name": "spsc::small_buffer::crossbeam",
+            "value": 6397896.4,
+            "unit": "ns/iter",
+            "range": "+/- 142509.73"
+          },
+          {
+            "name": "spsc::small_buffer::flume",
+            "value": 32692156.3,
+            "unit": "ns/iter",
+            "range": "+/- 5334354.27"
+          },
+          {
+            "name": "spsc::small_buffer::kanal",
+            "value": 3913062.8,
+            "unit": "ns/iter",
+            "range": "+/- 470335.91"
+          },
+          {
+            "name": "spsc::small_buffer::std_sync",
+            "value": 16438804.7,
+            "unit": "ns/iter",
+            "range": "+/- 27264334.51"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_drain",
+            "value": 1070078.85,
+            "unit": "ns/iter",
+            "range": "+/- 65782.92"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_spin",
+            "value": 788653.0,
+            "unit": "ns/iter",
+            "range": "+/- 63872.97"
+          },
+          {
+            "name": "spsc::throughput::crossbeam",
+            "value": 4419386.75,
+            "unit": "ns/iter",
+            "range": "+/- 426122.06"
+          },
+          {
+            "name": "spsc::throughput::flume",
+            "value": 2140546.48,
+            "unit": "ns/iter",
+            "range": "+/- 80598.14"
+          },
+          {
+            "name": "spsc::throughput::kanal",
+            "value": 3169590.35,
+            "unit": "ns/iter",
+            "range": "+/- 810526.40"
+          },
+          {
+            "name": "spsc::throughput::std_sync",
+            "value": 1538225.45,
+            "unit": "ns/iter",
+            "range": "+/- 215820.23"
+          },
+          {
+            "name": "spsc::throughput::veloce_drain",
+            "value": 954272.99,
+            "unit": "ns/iter",
+            "range": "+/- 120667.64"
+          },
+          {
+            "name": "spsc::throughput::veloce_spin",
+            "value": 1062096.5,
+            "unit": "ns/iter",
+            "range": "+/- 39092.55"
+          },
+          {
+            "name": "spsc::throughput::veloce_try",
+            "value": 1130628.3,
+            "unit": "ns/iter",
+            "range": "+/- 31300.35"
           }
         ]
       }

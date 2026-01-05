@@ -8,6 +8,7 @@ mod spsc {
     mod latency;
     mod oneshot;
     mod seq_inout;
+    mod slow_consumer;
     mod small_buffer;
     mod throughput;
 }

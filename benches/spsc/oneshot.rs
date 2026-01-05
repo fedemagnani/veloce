@@ -1,25 +1,16 @@
-//! Oneshot Benchmarks
+//! Oneshot pattern: create channel, send one message, receive, discard.
 //!
-//! Measures the full round-trip cost of a single message: channel creation,
-//! one send, and one receive.
+//! Measures total cost including channel creation and teardown. Relevant when
+//! channels are created frequently and used only once.
 //!
-//! ## What is measured
-//!
-//! - Channel allocation and initialization
-//! - Single `send` operation (non-blocking for veloce, blocking for others)
-//! - Single `recv` operation
-//! - Channel teardown (implicit drop)
-//!
-//! ## Methodology
-//!
-//! Each iteration:
-//! 1. Creates a new channel with [`BUFFER_SIZE`](crate::BUFFER_SIZE) capacity
-//! 2. Sends a single `i32` value
-//! 3. Receives and returns the value
-//!
-//! This simulates request-response patterns where channels are short-lived.
+//! Real-world scenarios:
+//! - Async task result delivery (futures/promises)
+//! - Per-request response channels
+//! - Thread spawn with result callback
 
 use crossbeam_channel::bounded as crossbeam_bounded;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -47,6 +38,24 @@ fn crossbeam(b: &mut Bencher) {
 fn std_sync(b: &mut Bencher) {
     b.iter(|| {
         let (tx, rx) = std_sync_channel::<i32>(BUFFER_SIZE);
+        tx.send(42).unwrap();
+        rx.recv().unwrap()
+    });
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    b.iter(|| {
+        let (tx, rx) = flume_bounded::<i32>(BUFFER_SIZE);
+        tx.send(42).unwrap();
+        rx.recv().unwrap()
+    });
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    b.iter(|| {
+        let (tx, rx) = kanal_bounded::<i32>(BUFFER_SIZE);
         tx.send(42).unwrap();
         rx.recv().unwrap()
     });

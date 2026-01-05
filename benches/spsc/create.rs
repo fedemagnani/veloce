@@ -1,20 +1,11 @@
-//! Channel Creation Benchmarks
+//! Channel creation overhead: measure allocation and initialization cost.
 //!
-//! Measures the time to allocate and initialize a channel with a buffer of
-//! [`BUFFER_SIZE`](crate::BUFFER_SIZE) (1024) slots.
-//!
-//! ## What is measured
-//!
-//! - Memory allocation for the ring buffer
-//! - Initialization of atomic indices and synchronization primitives
-//! - Arc creation (for veloce/crossbeam) or internal structures (for std)
-//!
-//! ## Methodology
-//!
-//! Each iteration creates a fresh channel. The returned sender/receiver handles
-//! are immediately dropped after creation.
+//! Tests how fast new channels can be created. Relevant when channels are
+//! created frequently in hot paths.
 
 use crossbeam_channel::bounded as crossbeam_bounded;
+use flume::bounded as flume_bounded;
+use kanal::bounded as kanal_bounded;
 use std::sync::mpsc::sync_channel as std_sync_channel;
 use test::Bencher;
 use veloce::spsc::channel;
@@ -33,4 +24,14 @@ fn crossbeam(b: &mut Bencher) {
 #[bench]
 fn std_sync(b: &mut Bencher) {
     b.iter(|| std_sync_channel::<i32>(BUFFER_SIZE));
+}
+
+#[bench]
+fn flume(b: &mut Bencher) {
+    b.iter(|| flume_bounded::<i32>(BUFFER_SIZE));
+}
+
+#[bench]
+fn kanal(b: &mut Bencher) {
+    b.iter(|| kanal_bounded::<i32>(BUFFER_SIZE));
 }

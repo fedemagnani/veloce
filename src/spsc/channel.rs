@@ -58,7 +58,7 @@ impl<T, const N: usize> Channel<T, N> {
 
     #[inline]
     pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::Acquire)
+        self.closed.load(Ordering::Relaxed)
     }
 
     #[cfg(feature = "async")]
