@@ -55,9 +55,8 @@
 //! tx.try_send(1).unwrap();
 //! tx.try_send(2).unwrap();
 //!
-//! assert_eq!(rx.try_recv().unwrap(), Some(1));
-//! assert_eq!(rx.try_recv().unwrap(), Some(2));
-//! assert_eq!(rx.try_recv().unwrap(), None);  // Empty
+//! assert_eq!(rx.try_recv().unwrap(), 1);
+//! assert_eq!(rx.try_recv().unwrap(), 2);
 //! ```
 mod channel;
 mod receiver;
