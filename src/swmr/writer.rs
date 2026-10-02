@@ -16,7 +16,9 @@ where
     /// Uses the closure passed as input in order to set a value in the
     /// available slot. It doesn't publish the value yet.
     pub fn stage(&mut self, setter: impl Fn(&mut T)) {
-        let idx = self.staged.unwrap_or_else(|| self.first_available_slot());
+        let idx = self
+            .staged
+            .unwrap_or_else(|| self.register.first_available_slot());
         // in single-writer flavor, the writer has exclusive access
         let slot_mut = unsafe { &mut *self.register.slots[idx].get() };
         setter(slot_mut);
@@ -31,41 +33,13 @@ where
         let Some(idx) = self.staged.take() else {
             return Err(SwmrError::ValueNotStaged);
         };
+        // the writer is the only one advancing `current`, so it can load it with relaxed ordering
+        let current = self.register.current.load(Ordering::Relaxed);
+        let next = current.next(idx);
         // could be ordering release?
-        self.register.current.store(idx, Ordering::SeqCst);
+        self.register.current.store(next, Ordering::SeqCst);
 
         Ok(())
-    }
-
-    /// Scan all the hazard pointers to identify which slots are currently read by consumers.
-    /// Then, it returns the available slot with lowest index.
-    fn first_available_slot(&self) -> usize {
-        // define the bitmap used to accumulate the busy slots. The LSB is associated with
-        // the first slot.
-        let mut forbidden: u64 = 0;
-        // the current slot is not available, since it has the most recent data published
-        // we can load it with relaxed ordering since the writer is the only one which can advance it
-        forbidden |= 1 << self.register.current.load(Ordering::Relaxed);
-        // Scan all the hazard pointers, updating the bitmap
-        for hp in &self.register.busy_slots {
-            let busy = hp.slot().load(Ordering::SeqCst);
-            forbidden |= 1 << busy;
-        }
-
-        let n_slots = self.register.slots.len();
-        let mask = if n_slots == u64::BITS as usize {
-            // 111..111
-            u64::MAX
-        } else {
-            // 000100...000 -> 000011...111
-            (1 << n_slots) - 1
-        };
-        let available = !forbidden;
-        // from available, we set to zero all the bits which are > slots.len()
-        let avaiblable = available & mask;
-
-        // starting from LSB, count how many bits before the first one
-        avaiblable.trailing_zeros() as usize
     }
 
     fn is_disconnected(&self) -> bool {

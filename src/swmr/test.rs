@@ -3,7 +3,12 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use crate::swmr::{SwmrError, reader::Reader, register::Register, writer::Writer};
+use crate::swmr::{
+    SwmrError,
+    reader::Reader,
+    register::{Register, SlotInfo},
+    writer::Writer,
+};
 
 #[test]
 fn single_thread() -> Result<(), SwmrError> {
@@ -93,7 +98,7 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
     // slow path: pins the current slot
     let latest = *reader.latest();
     assert_eq!(latest, 1);
-    let current = register.current.load(Ordering::SeqCst);
+    let current = register.current.load(Ordering::SeqCst).slot();
     let pinned = hp.load(Ordering::SeqCst);
     assert_eq!(pinned, current);
 
@@ -110,9 +115,77 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
     writer.commit()?;
     let latest = *reader.latest();
     assert_eq!(latest, 2);
-    let current = register.current.load(Ordering::SeqCst);
+    let current = register.current.load(Ordering::SeqCst).slot();
     let pinned = hp.load(Ordering::SeqCst);
     assert_eq!(pinned, current);
 
     Ok(())
+}
+
+/// The version counts the commits, and tells the reader whether its held value is outdated
+#[test]
+fn version_tracks_commits() -> Result<(), SwmrError> {
+    let num_readers = 1;
+    let num_slots = 3;
+
+    let register = Register::<u64, AtomicUsize>::new(
+        num_slots,
+        |_| 0,
+        num_readers,
+        |_| AtomicUsize::default(),
+    );
+
+    let (mut writer, mut readers) = register.split();
+    let reader = &mut readers[0];
+
+    // the initial value has not been seen yet
+    let changed = reader.has_changed();
+    assert!(changed);
+    let version = reader.version();
+    assert_eq!(version, None);
+
+    let initial = *reader.latest();
+    assert_eq!(initial, 0);
+    let changed = reader.has_changed();
+    assert!(!changed);
+    let version = reader.version();
+    assert_eq!(version, Some(0));
+
+    let num_commits = 5;
+    for v in 1..=num_commits {
+        writer.stage(|stored| *stored = v);
+        writer.commit()?;
+    }
+
+    // `has_changed` doesn't pin: the version still refers to the held value
+    let changed = reader.has_changed();
+    assert!(changed);
+    let version = reader.version();
+    assert_eq!(version, Some(0));
+
+    let latest = *reader.latest();
+    assert_eq!(latest, num_commits);
+    let changed = reader.has_changed();
+    assert!(!changed);
+    let version = reader.version();
+    let expected = Some(num_commits as usize);
+    assert_eq!(version, expected);
+
+    Ok(())
+}
+
+/// Overflowing the version must wrap it to zero, leaving the slot index untouched
+#[test]
+fn slot_info_version_wraps() {
+    let max_version = usize::MAX >> SlotInfo::SLOT_BITS;
+    let last = SlotInfo::new(max_version, 3);
+    let last_version = last.version();
+    assert_eq!(last_version, max_version);
+
+    let next_slot = 5;
+    let wrapped = last.next(next_slot);
+    let wrapped_version = wrapped.version();
+    assert_eq!(wrapped_version, 0);
+    let wrapped_slot = wrapped.slot();
+    assert_eq!(wrapped_slot, next_slot);
 }
