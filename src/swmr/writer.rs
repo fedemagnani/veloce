@@ -53,7 +53,7 @@ where
         }
 
         let n_slots = self.register.slots.len();
-        let mask = if n_slots == size_of::<u64>() {
+        let mask = if n_slots == u64::BITS as usize {
             // 111..111
             u64::MAX
         } else {
