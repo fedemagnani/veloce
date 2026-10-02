@@ -15,14 +15,25 @@ where
 {
     /// Uses the closure passed as input in order to set a value in the
     /// available slot. It doesn't publish the value yet.
-    pub fn stage(&mut self, setter: impl Fn(&mut T)) {
-        let idx = self
+    pub fn stage(&mut self, setter: impl FnOnce(&mut T)) {
+        self.stage_with_latest(|slot, _| setter(slot));
+    }
+
+    /// Like [`Writer::stage`], but the closure also receives the latest committed value
+    pub fn stage_with_latest(&mut self, setter: impl FnOnce(&mut T, &T)) {
+        let staged_idx = self
             .staged
             .unwrap_or_else(|| self.register.first_available_slot());
+        // the writer is the only one advancing `current`, so it can load it with relaxed ordering
+        let current = self.register.current.load(Ordering::Relaxed);
+        // the staged slot is never the current one
+        debug_assert_ne!(staged_idx, current.slot());
+        // readers only take shared references to the current slot, so the writer can do the same
+        let latest = unsafe { &*self.register.slots[current.slot()].get() };
         // in single-writer flavor, the writer has exclusive access
-        let slot_mut = unsafe { &mut *self.register.slots[idx].get() };
-        setter(slot_mut);
-        self.staged = Some(idx);
+        let slot_mut = unsafe { &mut *self.register.slots[staged_idx].get() };
+        setter(slot_mut, latest);
+        self.staged = Some(staged_idx);
     }
 
     /// Updates the slot number containing the most recent data

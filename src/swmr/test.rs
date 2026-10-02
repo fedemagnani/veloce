@@ -174,6 +174,40 @@ fn version_tracks_commits() -> Result<(), SwmrError> {
     Ok(())
 }
 
+/// Staging with the latest value allows delta updates, even after slots are recycled
+#[test]
+fn stage_with_latest_applies_deltas() -> Result<(), SwmrError> {
+    let num_readers = 2;
+    let num_slots = 4;
+
+    let register = Register::<Vec<u64>, AtomicUsize>::new(
+        num_slots,
+        |_| Vec::new(),
+        num_readers,
+        |_| AtomicUsize::default(),
+    );
+
+    let (mut writer, mut readers) = register.split();
+
+    // more publishes than slots, so each staged slot starts from a stale value
+    let num_commits = 10;
+    for v in 1..=num_commits {
+        writer.stage_with_latest(|slot, latest| {
+            slot.clone_from(latest);
+            slot.push(v);
+        });
+        writer.commit()?;
+    }
+
+    let expected: Vec<u64> = (1..=num_commits).collect();
+    for reader in &mut readers {
+        let latest = reader.latest();
+        assert_eq!(latest, &expected);
+    }
+
+    Ok(())
+}
+
 /// Overflowing the version must wrap it to zero, leaving the slot index untouched
 #[test]
 fn slot_info_version_wraps() {
