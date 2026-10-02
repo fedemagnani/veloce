@@ -12,7 +12,8 @@ where
     H: HazardPointer,
 {
     /// Returns an immutable reference of the latest value published by the `Writer`
-    pub fn latest(&self) -> &T {
+    /// The slot stays pinned until the next call, without blocking writer nor other readers.
+    pub fn latest(&mut self) -> &T {
         // load the index of the slot containing the latest version of the published data
         let mut current = self.register.current.load(Ordering::Acquire);
         loop {
