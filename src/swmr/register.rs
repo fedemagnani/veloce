@@ -20,21 +20,29 @@ pub(super) const MAX_READERS: usize = MAX_SLOTS - 2;
 /// Hazard pointer value of a reader not pinning any slot
 pub(super) const NO_SLOT: usize = usize::MAX;
 
-/// Slot information stored as `version (58 bits) | index (6 bits)`
+/// Slot information stored as `version (57 bits) | closed (1 bit) | index (6 bits)`
 /// - `version` is used to identify the sequence number of the update (this allows readers to count the number of missed updates)
+/// - `closed` is set once the [`Writer`] is dropped. Since it lives in the same word as `index`, a reader observing it
+///   knows that the slot loaded alongside holds the final value.
 /// - `index` specifies the location of the current slot. The total number of slots are 64, and 2^6 = 64 so 6 bits are enough to store the index.
+///
+/// The `closed` bit sits below `version`, so that a wrapping `version` is truncated by the shift instead of overflowing into it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct SlotInfo(usize);
+pub(super) struct SlotHeader(usize);
 
-impl SlotInfo {
+impl SlotHeader {
     /// Mask selecting the low bits holding the slot index: since [`MAX_SLOTS`] is a power of 2,
     /// it is the highest slot index
     const SLOT_MASK: usize = MAX_SLOTS - 1;
     /// Number of low bits holding the slot index
-    pub(super) const SLOT_BITS: u32 = Self::SLOT_MASK.ilog2() + 1;
+    const SLOT_BITS: u32 = Self::SLOT_MASK.ilog2() + 1;
+    /// Bit set once the [`Writer`] is dropped
+    const CLOSED: usize = 1 << Self::SLOT_BITS;
+    /// Number of low bits preceding the version
+    pub(super) const VERSION_SHIFT: u32 = Self::SLOT_BITS + 1;
 
     pub(super) fn new(version: usize, slot: usize) -> Self {
-        Self((version << Self::SLOT_BITS) | slot)
+        Self((version << Self::VERSION_SHIFT) | slot)
     }
 
     pub(super) fn slot(self) -> usize {
@@ -42,31 +50,40 @@ impl SlotInfo {
     }
 
     pub(super) fn version(self) -> usize {
-        self.0 >> Self::SLOT_BITS
+        self.0 >> Self::VERSION_SHIFT
     }
 
-    /// [`SlotInfo`] of the value published in `slot` right after the one described by `self`
+    pub(super) fn is_closed(self) -> bool {
+        self.0 & Self::CLOSED != 0
+    }
+
+    /// Marks the [`SlotHeader`] as closed, leaving version and slot index untouched
+    pub(super) fn set_closed(&mut self) {
+        self.0 |= Self::CLOSED;
+    }
+
+    /// [`SlotHeader`] of the value published in `slot` right after the one described by `self`
     pub(super) fn next(self, slot: usize) -> Self {
         let version = self.version().wrapping_add(1);
         Self::new(version, slot)
     }
 }
 
-/// Atomic cell holding a [`SlotInfo`]
+/// Atomic cell holding a [`SlotHeader`]
 pub(super) struct AtomicSlotInfo(AtomicUsize);
 
 impl AtomicSlotInfo {
-    pub(super) fn new(info: SlotInfo) -> Self {
+    pub(super) fn new(info: SlotHeader) -> Self {
         let raw = AtomicUsize::new(info.0);
         Self(raw)
     }
 
-    pub(super) fn load(&self, order: Ordering) -> SlotInfo {
+    pub(super) fn load(&self, order: Ordering) -> SlotHeader {
         let raw = self.0.load(order);
-        SlotInfo(raw)
+        SlotHeader(raw)
     }
 
-    pub(super) fn store(&self, info: SlotInfo, order: Ordering) {
+    pub(super) fn store(&self, info: SlotHeader, order: Ordering) {
         self.0.store(info.0, order);
     }
 }
@@ -78,15 +95,13 @@ impl AtomicSlotInfo {
 ///
 /// This register requires fixed topology: once constructed, it doesn't admit variations in the readers number
 pub(super) struct Register<T, H> {
-    /// The [`SlotInfo`] of the latest published value
+    /// The [`SlotHeader`] of the latest published value
     pub(super) current: AtomicSlotInfo,
     /// Slots currently being read by each reader.
     /// The lengths of this array is equal to the number of outstanding readers.
     pub(super) busy_slots: Box<[CachePadded<H>]>,
     /// Slots where the actual data is being written.
     /// The length of this vector is exactly `busy_slots.len() + 2`, following the triple-buffer design:
-    /// readers pin at most `busy_slots.len()` slots and `current` holds one more, so the writer always
-    /// finds a free slot. Any additional slot would never be selected by [`Register::first_available_slot`].
     pub(super) slots: Box<[CachePadded<UnsafeCell<T>>]>,
 }
 
@@ -129,7 +144,7 @@ impl<T, H> Register<T, H> {
             .collect();
 
         // the initial value lives in the first slot
-        let initial = SlotInfo::new(0, 0);
+        let initial = SlotHeader::new(0, 0);
         let current = AtomicSlotInfo::new(initial);
 
         Self {

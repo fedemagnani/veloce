@@ -6,7 +6,7 @@ use std::sync::{
 use crate::swmr::{
     SwmrError,
     reader::Reader,
-    register::{Register, SlotInfo},
+    register::{Register, SlotHeader},
     writer::Writer,
 };
 
@@ -194,13 +194,15 @@ fn stage_with_latest_applies_deltas() -> Result<(), SwmrError> {
     Ok(())
 }
 
-/// Overflowing the version must wrap it to zero, leaving the slot index untouched
+/// Overflowing the version must wrap it to zero, leaving the slot index and the closed mark untouched
 #[test]
 fn slot_info_version_wraps() {
-    let max_version = usize::MAX >> SlotInfo::SLOT_BITS;
-    let last = SlotInfo::new(max_version, 3);
+    let max_version = usize::MAX >> SlotHeader::VERSION_SHIFT;
+    let last = SlotHeader::new(max_version, 3);
     let last_version = last.version();
     assert_eq!(last_version, max_version);
+    let last_closed = last.is_closed();
+    assert!(!last_closed);
 
     let next_slot = 5;
     let wrapped = last.next(next_slot);
@@ -208,4 +210,40 @@ fn slot_info_version_wraps() {
     assert_eq!(wrapped_version, 0);
     let wrapped_slot = wrapped.slot();
     assert_eq!(wrapped_slot, next_slot);
+    let wrapped_closed = wrapped.is_closed();
+    assert!(!wrapped_closed);
+}
+
+/// Dropping the writer closes the register: readers keep reading the last committed value,
+/// while a staged value not yet committed is discarded
+#[test]
+fn writer_drop_closes_register() -> Result<(), SwmrError> {
+    let num_readers = 2;
+
+    let register =
+        Register::<u64, AtomicUsize>::new(num_readers, |_| 0, |_| AtomicUsize::default());
+
+    let (mut writer, mut readers) = register.split();
+
+    writer.stage(|stored| *stored = 1);
+    writer.commit()?;
+    writer.stage(|stored| *stored = 2);
+
+    for reader in &readers {
+        let closed = reader.is_closed();
+        assert!(!closed);
+    }
+
+    drop(writer);
+
+    for reader in &mut readers {
+        let closed = reader.is_closed();
+        assert!(closed);
+        let latest = *reader.latest();
+        assert_eq!(latest, 1);
+        let version = reader.version();
+        assert_eq!(version, Some(1));
+    }
+
+    Ok(())
 }

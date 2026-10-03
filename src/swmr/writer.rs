@@ -58,6 +58,15 @@ where
     }
 }
 
+impl<T, H> Drop for Writer<T, H> {
+    /// Marks the latest committed value as final, so readers can detect the disconnection.
+    fn drop(&mut self) {
+        let mut current = self.register.current.load(Ordering::Relaxed);
+        current.set_closed();
+        self.register.current.store(current, Ordering::Release);
+    }
+}
+
 impl<T, H> From<Arc<Register<T, H>>> for Writer<T, H> {
     fn from(value: Arc<Register<T, H>>) -> Self {
         Self {
