@@ -13,12 +13,11 @@ use crate::swmr::{
 #[test]
 fn single_thread() -> Result<(), SwmrError> {
     let num_readers = 2;
-    let num_slots = 4;
 
     let init_slot = |_| 0;
     let init_hp = |_| AtomicUsize::default();
 
-    let register = Register::<u64, AtomicUsize>::new(num_slots, init_slot, num_readers, init_hp);
+    let register = Register::<u64, AtomicUsize>::new(num_readers, init_slot, init_hp);
 
     let (mut writer, mut readers) = register.split();
 
@@ -46,14 +45,9 @@ fn single_thread() -> Result<(), SwmrError> {
 #[test]
 fn held_reference_survives_publishes() -> Result<(), SwmrError> {
     let num_readers = 1;
-    let num_slots = 3;
 
-    let register = Register::<u64, AtomicUsize>::new(
-        num_slots,
-        |_| 0,
-        num_readers,
-        |_| AtomicUsize::default(),
-    );
+    let register =
+        Register::<u64, AtomicUsize>::new(num_readers, |_| 0, |_| AtomicUsize::default());
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -80,12 +74,11 @@ fn held_reference_survives_publishes() -> Result<(), SwmrError> {
 #[test]
 fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
     let num_readers = 1;
-    let num_slots = 3;
+    let num_slots = num_readers + 2;
 
     let register = Arc::new(Register::<u64, AtomicUsize>::new(
-        num_slots,
-        |_| 0,
         num_readers,
+        |_| 0,
         |_| AtomicUsize::default(),
     ));
     let mut writer = Writer::from(register.clone());
@@ -126,14 +119,9 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
 #[test]
 fn version_tracks_commits() -> Result<(), SwmrError> {
     let num_readers = 1;
-    let num_slots = 3;
 
-    let register = Register::<u64, AtomicUsize>::new(
-        num_slots,
-        |_| 0,
-        num_readers,
-        |_| AtomicUsize::default(),
-    );
+    let register =
+        Register::<u64, AtomicUsize>::new(num_readers, |_| 0, |_| AtomicUsize::default());
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -178,12 +166,10 @@ fn version_tracks_commits() -> Result<(), SwmrError> {
 #[test]
 fn stage_with_latest_applies_deltas() -> Result<(), SwmrError> {
     let num_readers = 2;
-    let num_slots = 4;
 
     let register = Register::<Vec<u64>, AtomicUsize>::new(
-        num_slots,
-        |_| Vec::new(),
         num_readers,
+        |_| Vec::new(),
         |_| AtomicUsize::default(),
     );
 

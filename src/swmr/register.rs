@@ -84,8 +84,9 @@ pub(super) struct Register<T, H> {
     /// The lengths of this array is equal to the number of outstanding readers.
     pub(super) busy_slots: Box<[CachePadded<H>]>,
     /// Slots where the actual data is being written.
-    /// The length of this vector is at least `read_slots.len() + 2`,
-    /// following the triple-buffer design.
+    /// The length of this vector is exactly `busy_slots.len() + 2`, following the triple-buffer design:
+    /// readers pin at most `busy_slots.len()` slots and `current` holds one more, so the writer always
+    /// finds a free slot. Any additional slot would never be selected by [`Register::first_available_slot`].
     pub(super) slots: Box<[CachePadded<UnsafeCell<T>>]>,
 }
 
@@ -96,23 +97,14 @@ pub(super) struct Register<T, H> {
 unsafe impl<T: Send + Sync, H: Sync> Sync for Register<T, H> {}
 
 impl<T, H> Register<T, H> {
-    /// Construct a new [`Register`], supplying the closures needed to construct the initial values
-    /// of the hazard pointers and published values
+    /// Construct a new [`Register`] with `num_readers + 2` slots, supplying the closures needed to
+    /// construct the initial values of the published values and hazard pointers
     pub fn new(
-        num_slots: usize,
-        init_slot: impl Fn(usize) -> T,
         num_readers: usize,
+        init_slot: impl Fn(usize) -> T,
         init_hp: impl Fn(usize) -> H,
     ) -> Self {
-        assert!(num_slots >= num_readers + 2, "num_slots < num_readers + 2");
-
         assert!(num_readers > 0, "num_readers == 0");
-
-        assert!(
-            num_slots <= MAX_SLOTS,
-            "too many slots: num_slots > {}",
-            MAX_SLOTS
-        );
 
         assert!(
             num_readers <= MAX_READERS,
@@ -120,6 +112,7 @@ impl<T, H> Register<T, H> {
             MAX_READERS
         );
 
+        let num_slots = num_readers + 2;
         let slots = (0..num_slots)
             .map(|i| {
                 let inner = init_slot(i);
