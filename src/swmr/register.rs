@@ -17,6 +17,8 @@ const _: () = assert!(
 );
 /// Maximal number of readers of a [`Register`], following the triple-buffer design.
 pub(super) const MAX_READERS: usize = MAX_SLOTS - 2;
+/// Hazard pointer value of a reader not pinning any slot
+pub(super) const NO_SLOT: usize = usize::MAX;
 
 /// Slot information stored as `version (58 bits) | index (6 bits)`
 /// - `version` is used to identify the sequence number of the update (this allows readers to count the number of missed updates)
@@ -156,6 +158,9 @@ impl<T, H> Register<T, H> {
         // Scan all the hazard pointers, updating the bitmap
         for hp in &self.busy_slots {
             let busy = hp.slot().load(Ordering::SeqCst);
+            if busy == NO_SLOT {
+                continue;
+            }
             forbidden |= 1 << busy;
         }
 
@@ -176,7 +181,10 @@ impl<T, H> Register<T, H> {
     }
 
     /// Consume the [`Register`] creating the single [`Writer`] and the multi [`Reader`]s
-    pub fn split(self) -> (Writer<T, H>, Vec<Reader<T, H>>) {
+    pub fn split(self) -> (Writer<T, H>, Vec<Reader<T, H>>)
+    where
+        H: HazardPointer,
+    {
         let register = Arc::new(self);
 
         let writer = Writer::from(register.clone());

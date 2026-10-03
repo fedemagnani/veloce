@@ -2,10 +2,13 @@ use std::sync::{Arc, atomic::Ordering};
 
 use crate::swmr::{
     HazardPointer,
-    register::{Register, SlotInfo},
+    register::{NO_SLOT, Register, SlotInfo},
 };
 
-pub struct Reader<T, H> {
+pub struct Reader<T, H>
+where
+    H: HazardPointer,
+{
     register: Arc<Register<T, H>>,
     index: usize,
     /// [`SlotInfo`] of the value returned by the last call to [`Reader::latest`]
@@ -49,7 +52,10 @@ where
     }
 }
 
-impl<T, H> Reader<T, H> {
+impl<T, H> Reader<T, H>
+where
+    H: HazardPointer,
+{
     pub fn new(register: Arc<Register<T, H>>, index: usize) -> Self {
         Self {
             register,
@@ -70,5 +76,16 @@ impl<T, H> Reader<T, H> {
     /// The initial value has version zero, and each commit increments it, wrapping on overflow.
     pub fn version(&self) -> Option<usize> {
         self.pinned.map(SlotInfo::version)
+    }
+}
+
+impl<T, H> Drop for Reader<T, H>
+where
+    H: HazardPointer,
+{
+    /// Releases the pinned slot, so the writer can recycle it
+    fn drop(&mut self) {
+        let hp = self.register.busy_slots[self.index].slot();
+        hp.store(NO_SLOT, Ordering::Release);
     }
 }
