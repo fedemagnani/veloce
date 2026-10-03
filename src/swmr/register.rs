@@ -89,6 +89,12 @@ pub(super) struct Register<T, H> {
     pub(super) slots: Box<[CachePadded<UnsafeCell<T>>]>,
 }
 
+// SAFETY: the hazard pointer protocol guarantees that a slot is never mutated while it is shared.
+// - `T: Sync` since multiple readers (and the writer) hold `&T` to the same slot concurrently
+// - `T: Send` since the writer mutates slots, and drops them, from a thread other than the readers
+// - `H: Sync` since readers store their hazard pointers while the writer scans them
+unsafe impl<T: Send + Sync, H: Sync> Sync for Register<T, H> {}
+
 impl<T, H> Register<T, H> {
     /// Construct a new [`Register`], supplying the closures needed to construct the initial values
     /// of the hazard pointers and published values
