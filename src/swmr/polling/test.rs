@@ -2,9 +2,10 @@ use std::sync::{Arc, atomic::Ordering};
 
 use super::Polling;
 use crate::swmr::{
-    SwmrError, WaitStrategy,
+    SwmrError,
     reader::Reader,
     register::{Register, SlotHeader},
+    sealed::SealedWaitStrategy,
     writer::Writer,
 };
 
@@ -12,7 +13,7 @@ use crate::swmr::{
 fn single_thread() -> Result<(), SwmrError> {
     let num_readers = 2;
 
-    let init_slot = |_| 0;
+    let init_slot = || 0;
 
     let register = Register::<u64, Polling>::new(num_readers, init_slot);
 
@@ -43,7 +44,7 @@ fn single_thread() -> Result<(), SwmrError> {
 fn held_reference_survives_publishes() -> Result<(), SwmrError> {
     let num_readers = 1;
 
-    let register = Register::<u64, Polling>::new(num_readers, |_| 0);
+    let register = Register::<u64, Polling>::new(num_readers, || 0);
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -72,7 +73,7 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
     let num_readers = 1;
     let num_slots = num_readers + 2;
 
-    let register = Arc::new(Register::<u64, Polling>::new(num_readers, |_| 0));
+    let register = Arc::new(Register::<u64, Polling>::new(num_readers, || 0));
     let mut writer = Writer::from(register.clone());
     let mut reader = Reader::new(register.clone(), 0);
     let hp = register.busy_slots[0].hazard();
@@ -112,7 +113,7 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
 fn version_tracks_commits() -> Result<(), SwmrError> {
     let num_readers = 1;
 
-    let register = Register::<u64, Polling>::new(num_readers, |_| 0);
+    let register = Register::<u64, Polling>::new(num_readers, || 0);
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -158,7 +159,7 @@ fn version_tracks_commits() -> Result<(), SwmrError> {
 fn stage_with_latest_applies_deltas() -> Result<(), SwmrError> {
     let num_readers = 2;
 
-    let register = Register::<Vec<u64>, Polling>::new(num_readers, |_| Vec::new());
+    let register = Register::<Vec<u64>, Polling>::new(num_readers, Vec::new);
 
     let (mut writer, mut readers) = register.split();
 
@@ -207,7 +208,7 @@ fn slot_info_version_wraps() {
 fn writer_drop_closes_register() -> Result<(), SwmrError> {
     let num_readers = 2;
 
-    let register = Register::<u64, Polling>::new(num_readers, |_| 0);
+    let register = Register::<u64, Polling>::new(num_readers, || 0);
 
     let (mut writer, mut readers) = register.split();
 

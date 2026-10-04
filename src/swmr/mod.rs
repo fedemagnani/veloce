@@ -22,8 +22,6 @@
 //!
 //! \*\*\* polling [`Reader::changed`] registers the task's waker, which runs executor code
 
-use std::sync::atomic::AtomicUsize;
-
 #[cfg(feature = "async")]
 mod r#async;
 mod polling;
@@ -32,7 +30,16 @@ mod register;
 mod writer;
 
 mod sealed {
-    pub trait Sealed {}
+    use std::sync::atomic::AtomicUsize;
+
+    /// Internals of a [`WaitStrategy`](super::WaitStrategy), hidden from the public API
+    pub trait SealedWaitStrategy {
+        /// Hazard pointer of the reader. Must return the same atomic on every call.
+        fn hazard(&self) -> &AtomicUsize;
+
+        /// Called by the writer after each commit, and when it is dropped.
+        fn notify(&self) {}
+    }
 }
 
 #[cfg(feature = "async")]
@@ -41,14 +48,8 @@ pub use polling::{Polling, PollingReader, PollingWriter};
 pub use reader::Reader;
 pub use writer::Writer;
 
-/// How a [`Reader`] waits for new values, stored next to its hazard pointer
-pub trait WaitStrategy: sealed::Sealed + Sync + Default {
-    /// Hazard pointer of the reader. Must return the same atomic on every call.
-    fn hazard(&self) -> &AtomicUsize;
-
-    /// Called by the writer after each commit, and when it is dropped.
-    fn notify(&self) {}
-}
+/// How a [`Reader`] waits for new values: either [`Polling`] or `Async`
+pub trait WaitStrategy: sealed::SealedWaitStrategy + Sync + Default {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SwmrError {

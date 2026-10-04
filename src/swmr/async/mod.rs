@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use futures::task::AtomicWaker;
 
-use super::{WaitStrategy, reader::Reader, register::NO_SLOT, sealed::Sealed, writer::Writer};
+use super::{
+    WaitStrategy, reader::Reader, register::NO_SLOT, sealed::SealedWaitStrategy, writer::Writer,
+};
 
 mod reader;
 #[cfg(test)]
@@ -40,9 +42,7 @@ impl Default for Async {
     }
 }
 
-impl Sealed for Async {}
-
-impl WaitStrategy for Async {
+impl SealedWaitStrategy for Async {
     fn hazard(&self) -> &AtomicUsize {
         &self.hazard
     }
@@ -55,3 +55,5 @@ impl WaitStrategy for Async {
         }
     }
 }
+
+impl WaitStrategy for Async {}

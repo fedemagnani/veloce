@@ -61,7 +61,7 @@ where
         Arc::strong_count(&self.register) == 1
     }
 
-    /// If [`WaitStrategy::notify`] no-ops, then LLVM removes the loop completely
+    /// If [`SealedWaitStrategy::notify`](crate::swmr::sealed::SealedWaitStrategy::notify) no-ops, then LLVM removes the loop completely
     fn notify_readers(&self) {
         for reader in &self.register.busy_slots {
             reader.notify();

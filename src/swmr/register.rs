@@ -115,7 +115,7 @@ where
     W: WaitStrategy,
 {
     /// Construct a new [`Register`] with `num_readers + 2` slots, initialized by `init_slot`
-    pub fn new(num_readers: usize, init_slot: impl Fn(usize) -> T) -> Self {
+    pub fn new(num_readers: usize, mut init_slot: impl FnMut() -> T) -> Self {
         assert!(num_readers > 0, "num_readers == 0");
 
         assert!(
@@ -126,8 +126,8 @@ where
 
         let num_slots = num_readers + 2;
         let slots = (0..num_slots)
-            .map(|i| {
-                let inner = init_slot(i);
+            .map(|_| {
+                let inner = init_slot();
                 let inner = UnsafeCell::new(inner);
                 CachePadded::new(inner)
             })

@@ -2,7 +2,9 @@
 
 use std::sync::atomic::AtomicUsize;
 
-use super::{WaitStrategy, reader::Reader, register::NO_SLOT, sealed::Sealed, writer::Writer};
+use super::{
+    WaitStrategy, reader::Reader, register::NO_SLOT, sealed::SealedWaitStrategy, writer::Writer,
+};
 
 #[cfg(test)]
 mod test;
@@ -26,10 +28,10 @@ impl Default for Polling {
     }
 }
 
-impl Sealed for Polling {}
-
-impl WaitStrategy for Polling {
+impl SealedWaitStrategy for Polling {
     fn hazard(&self) -> &AtomicUsize {
         &self.hazard
     }
 }
+
+impl WaitStrategy for Polling {}

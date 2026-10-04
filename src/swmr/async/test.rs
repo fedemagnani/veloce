@@ -38,7 +38,7 @@ fn wake_counter() -> Arc<WakeCounter> {
 fn changed_resolves_on_unseen_value() -> Result<(), SwmrError> {
     let num_readers = 1;
 
-    let register = Register::<u64, Async>::new(num_readers, |_| 0);
+    let register = Register::<u64, Async>::new(num_readers, || 0);
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -65,7 +65,7 @@ fn changed_resolves_on_unseen_value() -> Result<(), SwmrError> {
 fn commit_wakes_waiting_reader() -> Result<(), SwmrError> {
     let num_readers = 1;
 
-    let register = Arc::new(Register::<u64, Async>::new(num_readers, |_| 0));
+    let register = Arc::new(Register::<u64, Async>::new(num_readers, || 0));
     let mut writer = Writer::from(register.clone());
     let mut reader = Reader::new(register.clone(), 0);
     let strategy = &register.busy_slots[0];
@@ -106,7 +106,7 @@ fn commit_wakes_waiting_reader() -> Result<(), SwmrError> {
 fn writer_drop_wakes_waiting_reader() {
     let num_readers = 1;
 
-    let register = Arc::new(Register::<u64, Async>::new(num_readers, |_| 0));
+    let register = Arc::new(Register::<u64, Async>::new(num_readers, || 0));
     let writer = Writer::from(register.clone());
     let mut reader = Reader::new(register.clone(), 0);
 
@@ -132,7 +132,7 @@ fn writer_drop_wakes_waiting_reader() {
 fn changed_reports_final_value_before_disconnection() -> Result<(), SwmrError> {
     let num_readers = 1;
 
-    let register = Register::<u64, Async>::new(num_readers, |_| 0);
+    let register = Register::<u64, Async>::new(num_readers, || 0);
 
     let (mut writer, mut readers) = register.split();
     let reader = &mut readers[0];
@@ -159,7 +159,7 @@ fn no_lost_wakeups_across_threads() -> Result<(), SwmrError> {
     let num_readers = 4;
     let num_commits = 10_000;
 
-    let register = Register::<u64, Async>::new(num_readers, |_| 0);
+    let register = Register::<u64, Async>::new(num_readers, || 0);
     let (mut writer, readers) = register.split();
 
     let (done_tx, done_rx) = mpsc::channel();
