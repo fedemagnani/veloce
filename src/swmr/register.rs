@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use crate::swmr::{HazardPointer, reader::Reader, writer::Writer};
+use crate::swmr::{WaitStrategy, reader::Reader, writer::Writer};
 
 /// Maximal number of slots of a [`Register`].
 pub(super) const MAX_SLOTS: usize = u64::BITS as usize;
@@ -90,16 +90,15 @@ impl AtomicSlotInfo {
 
 /// Single-writer-multi-reader registry
 /// - `T` is the type shared by the single writer to the multiple readers via this registry
-/// - `H` is the hazard pointer type, updated by each reader to identify which slots are currently busy
-/// - `B` is the bitmap type, defining an upper bound about the maximal slots and readers available for the registry
+/// - `W` is the [`WaitStrategy`] of the readers, holding the hazard pointer of each reader
 ///
 /// This register requires fixed topology: once constructed, it doesn't admit variations in the readers number
-pub(super) struct Register<T, H> {
+pub(super) struct Register<T, W> {
     /// The [`SlotHeader`] of the latest published value
     pub(super) current: AtomicSlotInfo,
     /// Slots currently being read by each reader.
     /// The lengths of this array is equal to the number of outstanding readers.
-    pub(super) busy_slots: Box<[CachePadded<H>]>,
+    pub(super) busy_slots: Box<[CachePadded<W>]>,
     /// Slots where the actual data is being written.
     /// The length of this vector is exactly `busy_slots.len() + 2`, following the triple-buffer design:
     pub(super) slots: Box<[CachePadded<UnsafeCell<T>>]>,
@@ -108,17 +107,15 @@ pub(super) struct Register<T, H> {
 // SAFETY: the hazard pointer protocol guarantees that a slot is never mutated while it is shared.
 // - `T: Sync` since multiple readers (and the writer) hold `&T` to the same slot concurrently
 // - `T: Send` since the writer mutates slots, and drops them, from a thread other than the readers
-// - `H: Sync` since readers store their hazard pointers while the writer scans them
-unsafe impl<T: Send + Sync, H: Sync> Sync for Register<T, H> {}
+// - `W: Sync` since readers store their hazard pointers while the writer scans them
+unsafe impl<T: Send + Sync, W: Sync> Sync for Register<T, W> {}
 
-impl<T, H> Register<T, H> {
-    /// Construct a new [`Register`] with `num_readers + 2` slots, supplying the closures needed to
-    /// construct the initial values of the published values and hazard pointers
-    pub fn new(
-        num_readers: usize,
-        init_slot: impl Fn(usize) -> T,
-        init_hp: impl Fn(usize) -> H,
-    ) -> Self {
+impl<T, W> Register<T, W>
+where
+    W: WaitStrategy,
+{
+    /// Construct a new [`Register`] with `num_readers + 2` slots, initialized by `init_slot`
+    pub fn new(num_readers: usize, init_slot: impl Fn(usize) -> T) -> Self {
         assert!(num_readers > 0, "num_readers == 0");
 
         assert!(
@@ -136,9 +133,10 @@ impl<T, H> Register<T, H> {
             })
             .collect();
 
+        // readers start without pinning any slot
         let busy_slots = (0..num_readers)
-            .map(|i| {
-                let inner = init_hp(i);
+            .map(|_| {
+                let inner = W::default();
                 CachePadded::new(inner)
             })
             .collect();
@@ -158,10 +156,7 @@ impl<T, H> Register<T, H> {
     /// Then, it returns the available slot with lowest index.
     ///
     /// Must be called by the single [`Writer`] only, since it is the one advancing `current`.
-    pub(super) fn first_available_slot(&self) -> usize
-    where
-        H: HazardPointer,
-    {
+    pub(super) fn first_available_slot(&self) -> usize {
         // define the bitmap used to accumulate the busy slots. The LSB is associated with
         // the first slot.
         let mut forbidden: u64 = 0;
@@ -171,7 +166,7 @@ impl<T, H> Register<T, H> {
         forbidden |= 1 << current.slot();
         // Scan all the hazard pointers, updating the bitmap
         for hp in &self.busy_slots {
-            let busy = hp.slot().load(Ordering::SeqCst);
+            let busy = hp.hazard().load(Ordering::SeqCst);
             if busy == NO_SLOT {
                 continue;
             }
@@ -195,10 +190,7 @@ impl<T, H> Register<T, H> {
     }
 
     /// Consume the [`Register`] creating the single [`Writer`] and the multi [`Reader`]s
-    pub fn split(self) -> (Writer<T, H>, Vec<Reader<T, H>>)
-    where
-        H: HazardPointer,
-    {
+    pub fn split(self) -> (Writer<T, W>, Vec<Reader<T, W>>) {
         let register = Arc::new(self);
 
         let writer = Writer::from(register.clone());

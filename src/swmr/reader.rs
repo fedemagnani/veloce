@@ -1,66 +1,26 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::swmr::{
-    HazardPointer,
+    WaitStrategy,
+    polling::Polling,
     register::{NO_SLOT, Register, SlotHeader},
 };
 
-pub struct Reader<T, H>
+pub struct Reader<T, W = Polling>
 where
-    H: HazardPointer,
+    W: WaitStrategy,
 {
-    register: Arc<Register<T, H>>,
+    pub(super) register: Arc<Register<T, W>>,
     index: usize,
     /// [`SlotHeader`] of the value returned by the last call to [`Reader::latest`]
     pinned: Option<SlotHeader>,
 }
 
-impl<T, H> Reader<T, H>
+impl<T, W> Reader<T, W>
 where
-    H: HazardPointer,
+    W: WaitStrategy,
 {
-    /// Returns an immutable reference of the latest value published by the `Writer`
-    /// The slot stays pinned until the next call, without blocking writer nor other readers.
-    pub fn latest(&mut self) -> &T {
-        let current = self.pin_current_slot();
-        let current_slot = &self.register.slots[current];
-        unsafe { &*current_slot.get() }
-    }
-
-    /// Returns the index of the slot containing the latest published value.
-    fn pin_current_slot(&mut self) -> usize {
-        // load the slot info of the latest version of the published data
-        let mut current = self.register.current.load(Ordering::Acquire);
-        // fast path: no commit happened since the last pin, so the slot we already pinned
-        // is still the most recent one. While pinned, the writer cannot stage into it,
-        // so its content is unchanged.
-        // Versions are compared rather than whole headers, since closing doesn't publish a new value
-        if let Some(pinned) = self.pinned
-            && pinned.version() == current.version()
-        {
-            return pinned.slot();
-        }
-        let hp = self.register.busy_slots[self.index].slot();
-        loop {
-            // mark this slot as busy
-            hp.store(current.slot(), Ordering::SeqCst);
-            // check if during the atomic-store a new value was committed
-            let new_current = self.register.current.load(Ordering::Acquire);
-            if new_current.version() == current.version() {
-                break;
-            }
-            current = new_current;
-        }
-        self.pinned = Some(current);
-        current.slot()
-    }
-}
-
-impl<T, H> Reader<T, H>
-where
-    H: HazardPointer,
-{
-    pub fn new(register: Arc<Register<T, H>>, index: usize) -> Self {
+    pub(super) fn new(register: Arc<Register<T, W>>, index: usize) -> Self {
         Self {
             register,
             index,
@@ -90,15 +50,56 @@ where
     pub fn version(&self) -> Option<usize> {
         self.pinned.map(SlotHeader::version)
     }
+
+    /// Returns an immutable reference of the latest value published by the `Writer`
+    /// The slot stays pinned until the next call, without blocking writer nor other readers.
+    pub fn latest(&mut self) -> &T {
+        let current = self.pin_current_slot();
+        let current_slot = &self.register.slots[current];
+        unsafe { &*current_slot.get() }
+    }
+
+    /// Returns the index of the slot containing the latest published value.
+    fn pin_current_slot(&mut self) -> usize {
+        // load the slot info of the latest version of the published data
+        let mut current = self.register.current.load(Ordering::Acquire);
+        // fast path: no commit happened since the last pin, so the slot we already pinned
+        // is still the most recent one. While pinned, the writer cannot stage into it,
+        // so its content is unchanged.
+        // Versions are compared rather than whole headers, since closing doesn't publish a new value
+        if let Some(pinned) = self.pinned
+            && pinned.version() == current.version()
+        {
+            return pinned.slot();
+        }
+        let hp = self.strategy().hazard();
+        loop {
+            // mark this slot as busy
+            hp.store(current.slot(), Ordering::SeqCst);
+            // check if during the atomic-store a new value was committed
+            let new_current = self.register.current.load(Ordering::Acquire);
+            if new_current.version() == current.version() {
+                break;
+            }
+            current = new_current;
+        }
+        self.pinned = Some(current);
+        current.slot()
+    }
+
+    /// The [`WaitStrategy`] owned by this reader, holding its hazard pointer
+    pub(super) fn strategy(&self) -> &W {
+        &self.register.busy_slots[self.index]
+    }
 }
 
-impl<T, H> Drop for Reader<T, H>
+impl<T, W> Drop for Reader<T, W>
 where
-    H: HazardPointer,
+    W: WaitStrategy,
 {
     /// Releases the pinned slot, so the writer can recycle it
     fn drop(&mut self) {
-        let hp = self.register.busy_slots[self.index].slot();
+        let hp = self.strategy().hazard();
         hp.store(NO_SLOT, Ordering::Release);
     }
 }

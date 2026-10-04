@@ -1,17 +1,20 @@
 use std::sync::{Arc, atomic::Ordering};
 
-use crate::swmr::{HazardPointer, SwmrError};
+use crate::swmr::{SwmrError, WaitStrategy, polling::Polling};
 
 use super::register::Register;
 
-pub struct Writer<T, H> {
-    register: Arc<Register<T, H>>,
+pub struct Writer<T, W = Polling>
+where
+    W: WaitStrategy,
+{
+    register: Arc<Register<T, W>>,
     staged: Option<usize>,
 }
 
-impl<T, H> Writer<T, H>
+impl<T, W> Writer<T, W>
 where
-    H: HazardPointer,
+    W: WaitStrategy,
 {
     /// Uses the closure passed as input in order to set a value in the
     /// available slot. It doesn't publish the value yet.
@@ -36,7 +39,7 @@ where
         self.staged = Some(staged_idx);
     }
 
-    /// Updates the slot number containing the most recent data
+    /// Updates the slot number containing the most recent data, notifying the readers
     pub fn commit(&mut self) -> Result<(), SwmrError> {
         if self.is_disconnected() {
             return Err(SwmrError::Disconnected);
@@ -47,8 +50,9 @@ where
         // the writer is the only one advancing `current`, so it can load it with relaxed ordering
         let current = self.register.current.load(Ordering::Relaxed);
         let next = current.next(idx);
-        // could be ordering release?
+        // SeqCst: readers store their hazard pointer and waiting flag before re-checking `current`
         self.register.current.store(next, Ordering::SeqCst);
+        self.notify_readers();
 
         Ok(())
     }
@@ -56,19 +60,34 @@ where
     fn is_disconnected(&self) -> bool {
         Arc::strong_count(&self.register) == 1
     }
+
+    /// If [`WaitStrategy::notify`] no-ops, then LLVM removes the loop completely
+    fn notify_readers(&self) {
+        for reader in &self.register.busy_slots {
+            reader.notify();
+        }
+    }
 }
 
-impl<T, H> Drop for Writer<T, H> {
+impl<T, W> Drop for Writer<T, W>
+where
+    W: WaitStrategy,
+{
     /// Marks the latest committed value as final, so readers can detect the disconnection.
     fn drop(&mut self) {
         let mut current = self.register.current.load(Ordering::Relaxed);
         current.set_closed();
-        self.register.current.store(current, Ordering::Release);
+        // SeqCst: like a commit, so that waiting readers either observe the closure or get notified
+        self.register.current.store(current, Ordering::SeqCst);
+        self.notify_readers();
     }
 }
 
-impl<T, H> From<Arc<Register<T, H>>> for Writer<T, H> {
-    fn from(value: Arc<Register<T, H>>) -> Self {
+impl<T, W> From<Arc<Register<T, W>>> for Writer<T, W>
+where
+    W: WaitStrategy,
+{
+    fn from(value: Arc<Register<T, W>>) -> Self {
         Self {
             register: value,
             staged: None,
