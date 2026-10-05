@@ -53,7 +53,7 @@ jobs:
           sed -i 's|<head>|<head><base href="./">|' $GITHUB_WORKSPACE/dist/index.html
 
       - name: Run benchmarks
-        run: cargo bench 2>&1 | tee benchmark-output.txt
+        run: cargo bench --features bench 2>&1 | tee benchmark-output.txt
 
       - name: Configure git
         run: |

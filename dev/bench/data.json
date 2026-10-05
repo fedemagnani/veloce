@@ -1,5 +1,5 @@
 {
-  "last_update": "2026-01-27T16:48:29.342205341Z",
+  "last_update": "2026-10-05T12:30:25.528782241Z",
   "entries": {
     "veloce": [
       {
@@ -1944,6 +1944,1427 @@
             "value": 994308.5,
             "unit": "ns/iter",
             "range": "+/- 359477.67"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "id": "8be930a1be68a12ac54f478f3ed33b553e4a7b7c",
+          "message": "feat: swmr (#9)",
+          "timestamp": "2026-10-05T12:07:23Z",
+          "url": "https://github.com/fedemagnani/veloce/commit/8be930a1be68a12ac54f478f3ed33b553e4a7b7c",
+          "author": {
+            "name": "Federico Magnani",
+            "email": "83358457+fedemagnani@users.noreply.github.com",
+            "username": "fedemagnani"
+          }
+        },
+        "date": "2026-10-05T12:30:25.250199287Z",
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "spsc::burst::crossbeam",
+            "value": 12339.97,
+            "unit": "ns/iter",
+            "range": "+/- 1065.40"
+          },
+          {
+            "name": "spsc::burst::flume",
+            "value": 11072.72,
+            "unit": "ns/iter",
+            "range": "+/- 957.31"
+          },
+          {
+            "name": "spsc::burst::kanal",
+            "value": 9471.79,
+            "unit": "ns/iter",
+            "range": "+/- 751.03"
+          },
+          {
+            "name": "spsc::burst::std_sync",
+            "value": 12367.81,
+            "unit": "ns/iter",
+            "range": "+/- 1263.07"
+          },
+          {
+            "name": "spsc::burst::veloce_lamport",
+            "value": 742.18,
+            "unit": "ns/iter",
+            "range": "+/- 28.61"
+          },
+          {
+            "name": "spsc::burst::veloce_lamport_drain",
+            "value": 591.69,
+            "unit": "ns/iter",
+            "range": "+/- 60.49"
+          },
+          {
+            "name": "spsc::burst::veloce_lamport_drain_full",
+            "value": 1186.36,
+            "unit": "ns/iter",
+            "range": "+/- 142.75"
+          },
+          {
+            "name": "spsc::burst::veloce_vyukov",
+            "value": 1624.36,
+            "unit": "ns/iter",
+            "range": "+/- 62.32"
+          },
+          {
+            "name": "spsc::burst::veloce_vyukov_drain",
+            "value": 1558.67,
+            "unit": "ns/iter",
+            "range": "+/- 202.15"
+          },
+          {
+            "name": "spsc::burst::veloce_vyukov_drain_full",
+            "value": 3264.81,
+            "unit": "ns/iter",
+            "range": "+/- 667.98"
+          },
+          {
+            "name": "spsc::create::crossbeam",
+            "value": 277.63,
+            "unit": "ns/iter",
+            "range": "+/- 28.31"
+          },
+          {
+            "name": "spsc::create::flume",
+            "value": 74.75,
+            "unit": "ns/iter",
+            "range": "+/- 8.17"
+          },
+          {
+            "name": "spsc::create::kanal",
+            "value": 88.22,
+            "unit": "ns/iter",
+            "range": "+/- 8.54"
+          },
+          {
+            "name": "spsc::create::std_sync",
+            "value": 256.14,
+            "unit": "ns/iter",
+            "range": "+/- 17.21"
+          },
+          {
+            "name": "spsc::create::veloce_lamport",
+            "value": 123.0,
+            "unit": "ns/iter",
+            "range": "+/- 12.59"
+          },
+          {
+            "name": "spsc::create::veloce_vyukov",
+            "value": 712.27,
+            "unit": "ns/iter",
+            "range": "+/- 26.82"
+          },
+          {
+            "name": "spsc::latency::crossbeam",
+            "value": 7454370.8,
+            "unit": "ns/iter",
+            "range": "+/- 11193078.63"
+          },
+          {
+            "name": "spsc::latency::flume",
+            "value": 243817454.8,
+            "unit": "ns/iter",
+            "range": "+/- 71647166.05"
+          },
+          {
+            "name": "spsc::latency::kanal",
+            "value": 8293347.6,
+            "unit": "ns/iter",
+            "range": "+/- 554859.19"
+          },
+          {
+            "name": "spsc::latency::std_sync",
+            "value": 242287369.0,
+            "unit": "ns/iter",
+            "range": "+/- 61577964.81"
+          },
+          {
+            "name": "spsc::latency::veloce_lamport",
+            "value": 4607640.05,
+            "unit": "ns/iter",
+            "range": "+/- 85344.50"
+          },
+          {
+            "name": "spsc::latency::veloce_vyukov",
+            "value": 2525534.5,
+            "unit": "ns/iter",
+            "range": "+/- 44993.48"
+          },
+          {
+            "name": "spsc::oneshot::crossbeam",
+            "value": 334.67,
+            "unit": "ns/iter",
+            "range": "+/- 28.51"
+          },
+          {
+            "name": "spsc::oneshot::flume",
+            "value": 103.99,
+            "unit": "ns/iter",
+            "range": "+/- 7.49"
+          },
+          {
+            "name": "spsc::oneshot::kanal",
+            "value": 122.64,
+            "unit": "ns/iter",
+            "range": "+/- 11.82"
+          },
+          {
+            "name": "spsc::oneshot::std_sync",
+            "value": 307.51,
+            "unit": "ns/iter",
+            "range": "+/- 11.43"
+          },
+          {
+            "name": "spsc::oneshot::veloce_lamport",
+            "value": 149.56,
+            "unit": "ns/iter",
+            "range": "+/- 14.25"
+          },
+          {
+            "name": "spsc::oneshot::veloce_vyukov",
+            "value": 676.59,
+            "unit": "ns/iter",
+            "range": "+/- 54.24"
+          },
+          {
+            "name": "spsc::seq_inout::crossbeam",
+            "value": 22.86,
+            "unit": "ns/iter",
+            "range": "+/- 2.64"
+          },
+          {
+            "name": "spsc::seq_inout::flume",
+            "value": 21.32,
+            "unit": "ns/iter",
+            "range": "+/- 2.00"
+          },
+          {
+            "name": "spsc::seq_inout::kanal",
+            "value": 19.02,
+            "unit": "ns/iter",
+            "range": "+/- 1.84"
+          },
+          {
+            "name": "spsc::seq_inout::std_sync",
+            "value": 23.94,
+            "unit": "ns/iter",
+            "range": "+/- 2.61"
+          },
+          {
+            "name": "spsc::seq_inout::veloce_lamport",
+            "value": 1.2,
+            "unit": "ns/iter",
+            "range": "+/- 0.05"
+          },
+          {
+            "name": "spsc::seq_inout::veloce_lamport_batch",
+            "value": 62.33,
+            "unit": "ns/iter",
+            "range": "+/- 2.67"
+          },
+          {
+            "name": "spsc::seq_inout::veloce_vyukov",
+            "value": 2.43,
+            "unit": "ns/iter",
+            "range": "+/- 0.17"
+          },
+          {
+            "name": "spsc::seq_inout::veloce_vyukov_batch",
+            "value": 171.06,
+            "unit": "ns/iter",
+            "range": "+/- 16.57"
+          },
+          {
+            "name": "spsc::slow_consumer::crossbeam",
+            "value": 1949345.42,
+            "unit": "ns/iter",
+            "range": "+/- 105462.43"
+          },
+          {
+            "name": "spsc::slow_consumer::flume",
+            "value": 895026.41,
+            "unit": "ns/iter",
+            "range": "+/- 183956.84"
+          },
+          {
+            "name": "spsc::slow_consumer::kanal",
+            "value": 2417483.73,
+            "unit": "ns/iter",
+            "range": "+/- 1188446.06"
+          },
+          {
+            "name": "spsc::slow_consumer::std",
+            "value": 509685.79,
+            "unit": "ns/iter",
+            "range": "+/- 25911.76"
+          },
+          {
+            "name": "spsc::slow_consumer::veloce_lamport_drain",
+            "value": 279844.05,
+            "unit": "ns/iter",
+            "range": "+/- 27562.12"
+          },
+          {
+            "name": "spsc::slow_consumer::veloce_lamport_spin",
+            "value": 1078121.24,
+            "unit": "ns/iter",
+            "range": "+/- 48653.32"
+          },
+          {
+            "name": "spsc::slow_consumer::veloce_vyukov_drain",
+            "value": 717115.16,
+            "unit": "ns/iter",
+            "range": "+/- 26913.15"
+          },
+          {
+            "name": "spsc::slow_consumer::veloce_vyukov_spin",
+            "value": 723673.73,
+            "unit": "ns/iter",
+            "range": "+/- 55167.75"
+          },
+          {
+            "name": "spsc::small_buffer::crossbeam",
+            "value": 2049063.58,
+            "unit": "ns/iter",
+            "range": "+/- 554851.87"
+          },
+          {
+            "name": "spsc::small_buffer::flume",
+            "value": 32842151.6,
+            "unit": "ns/iter",
+            "range": "+/- 13414554.24"
+          },
+          {
+            "name": "spsc::small_buffer::kanal",
+            "value": 9544412.25,
+            "unit": "ns/iter",
+            "range": "+/- 1208427.64"
+          },
+          {
+            "name": "spsc::small_buffer::std_sync",
+            "value": 6597388.1,
+            "unit": "ns/iter",
+            "range": "+/- 20410348.73"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_lamport_drain",
+            "value": 3235032.8,
+            "unit": "ns/iter",
+            "range": "+/- 185656.88"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_lamport_spin",
+            "value": 537343.69,
+            "unit": "ns/iter",
+            "range": "+/- 50834.77"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_vyukov_drain",
+            "value": 885800.84,
+            "unit": "ns/iter",
+            "range": "+/- 33776.59"
+          },
+          {
+            "name": "spsc::small_buffer::veloce_vyukov_spin",
+            "value": 855293.61,
+            "unit": "ns/iter",
+            "range": "+/- 36164.81"
+          },
+          {
+            "name": "spsc::throughput::crossbeam",
+            "value": 1507169.25,
+            "unit": "ns/iter",
+            "range": "+/- 173595.08"
+          },
+          {
+            "name": "spsc::throughput::flume",
+            "value": 7878342.35,
+            "unit": "ns/iter",
+            "range": "+/- 2724410.13"
+          },
+          {
+            "name": "spsc::throughput::kanal",
+            "value": 66253716.8,
+            "unit": "ns/iter",
+            "range": "+/- 81331826.01"
+          },
+          {
+            "name": "spsc::throughput::std_sync",
+            "value": 1876766.25,
+            "unit": "ns/iter",
+            "range": "+/- 225289.72"
+          },
+          {
+            "name": "spsc::throughput::veloce_lamport_drain",
+            "value": 415602.14,
+            "unit": "ns/iter",
+            "range": "+/- 62039.02"
+          },
+          {
+            "name": "spsc::throughput::veloce_lamport_spin",
+            "value": 651773.48,
+            "unit": "ns/iter",
+            "range": "+/- 66786.82"
+          },
+          {
+            "name": "spsc::throughput::veloce_lamport_try",
+            "value": 674155.2,
+            "unit": "ns/iter",
+            "range": "+/- 112556.07"
+          },
+          {
+            "name": "spsc::throughput::veloce_vyukov_drain",
+            "value": 800416.07,
+            "unit": "ns/iter",
+            "range": "+/- 35907.86"
+          },
+          {
+            "name": "spsc::throughput::veloce_vyukov_spin",
+            "value": 795168.23,
+            "unit": "ns/iter",
+            "range": "+/- 33903.16"
+          },
+          {
+            "name": "spsc::throughput::veloce_vyukov_try",
+            "value": 794719.15,
+            "unit": "ns/iter",
+            "range": "+/- 148858.40"
+          },
+          {
+            "name": "swmr::async_notify::veloce_r1",
+            "value": 113.62,
+            "unit": "ns/iter",
+            "range": "+/- 6220.31"
+          },
+          {
+            "name": "swmr::async_notify::veloce_r3",
+            "value": 13890.6,
+            "unit": "ns/iter",
+            "range": "+/- 5803.98"
+          },
+          {
+            "name": "swmr::async_notify::watch_r1",
+            "value": 6108.67,
+            "unit": "ns/iter",
+            "range": "+/- 5622.12"
+          },
+          {
+            "name": "swmr::async_notify::watch_r3",
+            "value": 19570.93,
+            "unit": "ns/iter",
+            "range": "+/- 5545.56"
+          },
+          {
+            "name": "swmr::create::arc_swap_r1",
+            "value": 136.14,
+            "unit": "ns/iter",
+            "range": "+/- 13.42"
+          },
+          {
+            "name": "swmr::create::arc_swap_r3",
+            "value": 167.04,
+            "unit": "ns/iter",
+            "range": "+/- 12.74"
+          },
+          {
+            "name": "swmr::create::atomic_cell_r1",
+            "value": 35.58,
+            "unit": "ns/iter",
+            "range": "+/- 3.42"
+          },
+          {
+            "name": "swmr::create::atomic_cell_r3",
+            "value": 55.5,
+            "unit": "ns/iter",
+            "range": "+/- 5.45"
+          },
+          {
+            "name": "swmr::create::left_right_r1",
+            "value": 430.26,
+            "unit": "ns/iter",
+            "range": "+/- 41.10"
+          },
+          {
+            "name": "swmr::create::left_right_r3",
+            "value": 676.24,
+            "unit": "ns/iter",
+            "range": "+/- 63.41"
+          },
+          {
+            "name": "swmr::create::rwlock_r1",
+            "value": 33.06,
+            "unit": "ns/iter",
+            "range": "+/- 3.35"
+          },
+          {
+            "name": "swmr::create::rwlock_r3",
+            "value": 54.1,
+            "unit": "ns/iter",
+            "range": "+/- 5.64"
+          },
+          {
+            "name": "swmr::create::seqlock_r1",
+            "value": 33.4,
+            "unit": "ns/iter",
+            "range": "+/- 1.78"
+          },
+          {
+            "name": "swmr::create::seqlock_r3",
+            "value": 53.8,
+            "unit": "ns/iter",
+            "range": "+/- 5.34"
+          },
+          {
+            "name": "swmr::create::triple_buffer_r1",
+            "value": 35.66,
+            "unit": "ns/iter",
+            "range": "+/- 2.80"
+          },
+          {
+            "name": "swmr::create::veloce_r1",
+            "value": 150.03,
+            "unit": "ns/iter",
+            "range": "+/- 18.74"
+          },
+          {
+            "name": "swmr::create::veloce_r3",
+            "value": 113.5,
+            "unit": "ns/iter",
+            "range": "+/- 13.54"
+          },
+          {
+            "name": "swmr::create::watch_r1",
+            "value": 252.84,
+            "unit": "ns/iter",
+            "range": "+/- 22.95"
+          },
+          {
+            "name": "swmr::create::watch_r3",
+            "value": 294.25,
+            "unit": "ns/iter",
+            "range": "+/- 31.95"
+          },
+          {
+            "name": "swmr::propagation::arc_swap_p4k",
+            "value": 1000.5,
+            "unit": "ns/iter",
+            "range": "+/- 28.90"
+          },
+          {
+            "name": "swmr::propagation::arc_swap_p8",
+            "value": 842.16,
+            "unit": "ns/iter",
+            "range": "+/- 488.54"
+          },
+          {
+            "name": "swmr::propagation::atomic_cell_p4k",
+            "value": 1982.77,
+            "unit": "ns/iter",
+            "range": "+/- 51.54"
+          },
+          {
+            "name": "swmr::propagation::atomic_cell_p8",
+            "value": 263.55,
+            "unit": "ns/iter",
+            "range": "+/- 4.96"
+          },
+          {
+            "name": "swmr::propagation::left_right_p4k",
+            "value": 1110.83,
+            "unit": "ns/iter",
+            "range": "+/- 41.38"
+          },
+          {
+            "name": "swmr::propagation::left_right_p8",
+            "value": 711.61,
+            "unit": "ns/iter",
+            "range": "+/- 23.53"
+          },
+          {
+            "name": "swmr::propagation::rwlock_p4k",
+            "value": 661.57,
+            "unit": "ns/iter",
+            "range": "+/- 30.53"
+          },
+          {
+            "name": "swmr::propagation::rwlock_p8",
+            "value": 515.62,
+            "unit": "ns/iter",
+            "range": "+/- 17.30"
+          },
+          {
+            "name": "swmr::propagation::seqlock_p4k",
+            "value": 2639.64,
+            "unit": "ns/iter",
+            "range": "+/- 83.07"
+          },
+          {
+            "name": "swmr::propagation::seqlock_p8",
+            "value": 338.39,
+            "unit": "ns/iter",
+            "range": "+/- 22.26"
+          },
+          {
+            "name": "swmr::propagation::triple_buffer_p4k",
+            "value": 462.92,
+            "unit": "ns/iter",
+            "range": "+/- 15.04"
+          },
+          {
+            "name": "swmr::propagation::triple_buffer_p8",
+            "value": 474.4,
+            "unit": "ns/iter",
+            "range": "+/- 12.40"
+          },
+          {
+            "name": "swmr::propagation::veloce_p4k",
+            "value": 602.81,
+            "unit": "ns/iter",
+            "range": "+/- 17.52"
+          },
+          {
+            "name": "swmr::propagation::veloce_p8",
+            "value": 722.62,
+            "unit": "ns/iter",
+            "range": "+/- 15.74"
+          },
+          {
+            "name": "swmr::propagation::watch_p4k",
+            "value": 1120.03,
+            "unit": "ns/iter",
+            "range": "+/- 41.81"
+          },
+          {
+            "name": "swmr::propagation::watch_p8",
+            "value": 386.88,
+            "unit": "ns/iter",
+            "range": "+/- 14.27"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p4k_r1",
+            "value": 28.37,
+            "unit": "ns/iter",
+            "range": "+/- 2.72"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p4k_r3",
+            "value": 72.58,
+            "unit": "ns/iter",
+            "range": "+/- 2.67"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p64_r1",
+            "value": 32.13,
+            "unit": "ns/iter",
+            "range": "+/- 3.56"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p64_r3",
+            "value": 59.46,
+            "unit": "ns/iter",
+            "range": "+/- 7.68"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p8_r1",
+            "value": 35.0,
+            "unit": "ns/iter",
+            "range": "+/- 7.60"
+          },
+          {
+            "name": "swmr::read_contended::arc_swap_p8_r3",
+            "value": 62.28,
+            "unit": "ns/iter",
+            "range": "+/- 7.15"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p4k_r1",
+            "value": 408.43,
+            "unit": "ns/iter",
+            "range": "+/- 311.85"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p4k_r3",
+            "value": 1114.49,
+            "unit": "ns/iter",
+            "range": "+/- 49.87"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p64_r1",
+            "value": 1.64,
+            "unit": "ns/iter",
+            "range": "+/- 0.11"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p64_r3",
+            "value": 3.66,
+            "unit": "ns/iter",
+            "range": "+/- 0.63"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p8_r1",
+            "value": 0.35,
+            "unit": "ns/iter",
+            "range": "+/- 0.04"
+          },
+          {
+            "name": "swmr::read_contended::atomic_cell_p8_r3",
+            "value": 0.63,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p4k_r1",
+            "value": 29.62,
+            "unit": "ns/iter",
+            "range": "+/- 2.13"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p4k_r3",
+            "value": 61.34,
+            "unit": "ns/iter",
+            "range": "+/- 5.73"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p64_r1",
+            "value": 25.3,
+            "unit": "ns/iter",
+            "range": "+/- 2.41"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p64_r3",
+            "value": 58.13,
+            "unit": "ns/iter",
+            "range": "+/- 5.85"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p8_r1",
+            "value": 24.22,
+            "unit": "ns/iter",
+            "range": "+/- 2.31"
+          },
+          {
+            "name": "swmr::read_contended::left_right_p8_r3",
+            "value": 56.79,
+            "unit": "ns/iter",
+            "range": "+/- 4.17"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p4k_r1",
+            "value": 37.49,
+            "unit": "ns/iter",
+            "range": "+/- 3.46"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p4k_r3",
+            "value": 315.38,
+            "unit": "ns/iter",
+            "range": "+/- 29.52"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p64_r1",
+            "value": 20.17,
+            "unit": "ns/iter",
+            "range": "+/- 2.29"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p64_r3",
+            "value": 174.46,
+            "unit": "ns/iter",
+            "range": "+/- 21.96"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p8_r1",
+            "value": 19.94,
+            "unit": "ns/iter",
+            "range": "+/- 3.17"
+          },
+          {
+            "name": "swmr::read_contended::rwlock_p8_r3",
+            "value": 282.96,
+            "unit": "ns/iter",
+            "range": "+/- 28.50"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p4k_r1",
+            "value": 6782.56,
+            "unit": "ns/iter",
+            "range": "+/- 1328.76"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p4k_r3",
+            "value": 21084.05,
+            "unit": "ns/iter",
+            "range": "+/- 19401.03"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p64_r1",
+            "value": 1.8,
+            "unit": "ns/iter",
+            "range": "+/- 0.12"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p64_r3",
+            "value": 4.76,
+            "unit": "ns/iter",
+            "range": "+/- 0.77"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p8_r1",
+            "value": 0.64,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::read_contended::seqlock_p8_r3",
+            "value": 1.34,
+            "unit": "ns/iter",
+            "range": "+/- 0.10"
+          },
+          {
+            "name": "swmr::read_contended::triple_buffer_p4k_r1",
+            "value": 0.7,
+            "unit": "ns/iter",
+            "range": "+/- 0.07"
+          },
+          {
+            "name": "swmr::read_contended::triple_buffer_p64_r1",
+            "value": 0.7,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::read_contended::triple_buffer_p8_r1",
+            "value": 0.72,
+            "unit": "ns/iter",
+            "range": "+/- 0.05"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p4k_r1",
+            "value": 1.08,
+            "unit": "ns/iter",
+            "range": "+/- 0.07"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p4k_r3",
+            "value": 2.31,
+            "unit": "ns/iter",
+            "range": "+/- 0.19"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p64_r1",
+            "value": 1.12,
+            "unit": "ns/iter",
+            "range": "+/- 1.18"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p64_r3",
+            "value": 2.4,
+            "unit": "ns/iter",
+            "range": "+/- 0.19"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p8_r1",
+            "value": 1.07,
+            "unit": "ns/iter",
+            "range": "+/- 0.08"
+          },
+          {
+            "name": "swmr::read_contended::veloce_p8_r3",
+            "value": 2.81,
+            "unit": "ns/iter",
+            "range": "+/- 0.26"
+          },
+          {
+            "name": "swmr::read_contended::watch_p4k_r1",
+            "value": 54.12,
+            "unit": "ns/iter",
+            "range": "+/- 13.79"
+          },
+          {
+            "name": "swmr::read_contended::watch_p4k_r3",
+            "value": 315.33,
+            "unit": "ns/iter",
+            "range": "+/- 36.85"
+          },
+          {
+            "name": "swmr::read_contended::watch_p64_r1",
+            "value": 39.07,
+            "unit": "ns/iter",
+            "range": "+/- 9.24"
+          },
+          {
+            "name": "swmr::read_contended::watch_p64_r3",
+            "value": 394.0,
+            "unit": "ns/iter",
+            "range": "+/- 333.95"
+          },
+          {
+            "name": "swmr::read_contended::watch_p8_r1",
+            "value": 42.65,
+            "unit": "ns/iter",
+            "range": "+/- 10.26"
+          },
+          {
+            "name": "swmr::read_contended::watch_p8_r3",
+            "value": 202.45,
+            "unit": "ns/iter",
+            "range": "+/- 23.26"
+          },
+          {
+            "name": "swmr::read_idle::arc_swap_p4k",
+            "value": 13.82,
+            "unit": "ns/iter",
+            "range": "+/- 1.25"
+          },
+          {
+            "name": "swmr::read_idle::arc_swap_p64",
+            "value": 13.82,
+            "unit": "ns/iter",
+            "range": "+/- 0.88"
+          },
+          {
+            "name": "swmr::read_idle::arc_swap_p8",
+            "value": 13.82,
+            "unit": "ns/iter",
+            "range": "+/- 1.31"
+          },
+          {
+            "name": "swmr::read_idle::atomic_cell_p4k",
+            "value": 50.14,
+            "unit": "ns/iter",
+            "range": "+/- 4.72"
+          },
+          {
+            "name": "swmr::read_idle::atomic_cell_p64",
+            "value": 1.06,
+            "unit": "ns/iter",
+            "range": "+/- 0.11"
+          },
+          {
+            "name": "swmr::read_idle::atomic_cell_p8",
+            "value": 0.31,
+            "unit": "ns/iter",
+            "range": "+/- 0.02"
+          },
+          {
+            "name": "swmr::read_idle::left_right_p4k",
+            "value": 17.87,
+            "unit": "ns/iter",
+            "range": "+/- 0.77"
+          },
+          {
+            "name": "swmr::read_idle::left_right_p64",
+            "value": 17.75,
+            "unit": "ns/iter",
+            "range": "+/- 0.81"
+          },
+          {
+            "name": "swmr::read_idle::left_right_p8",
+            "value": 18.01,
+            "unit": "ns/iter",
+            "range": "+/- 0.91"
+          },
+          {
+            "name": "swmr::read_idle::rwlock_p4k",
+            "value": 14.73,
+            "unit": "ns/iter",
+            "range": "+/- 1.06"
+          },
+          {
+            "name": "swmr::read_idle::rwlock_p64",
+            "value": 14.73,
+            "unit": "ns/iter",
+            "range": "+/- 1.28"
+          },
+          {
+            "name": "swmr::read_idle::rwlock_p8",
+            "value": 14.75,
+            "unit": "ns/iter",
+            "range": "+/- 1.21"
+          },
+          {
+            "name": "swmr::read_idle::seqlock_p4k",
+            "value": 50.55,
+            "unit": "ns/iter",
+            "range": "+/- 3.64"
+          },
+          {
+            "name": "swmr::read_idle::seqlock_p64",
+            "value": 1.06,
+            "unit": "ns/iter",
+            "range": "+/- 0.11"
+          },
+          {
+            "name": "swmr::read_idle::seqlock_p8",
+            "value": 0.58,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::read_idle::triple_buffer_p4k",
+            "value": 0.58,
+            "unit": "ns/iter",
+            "range": "+/- 0.05"
+          },
+          {
+            "name": "swmr::read_idle::triple_buffer_p64",
+            "value": 0.58,
+            "unit": "ns/iter",
+            "range": "+/- 0.05"
+          },
+          {
+            "name": "swmr::read_idle::triple_buffer_p8",
+            "value": 0.58,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::read_idle::veloce_p4k",
+            "value": 0.87,
+            "unit": "ns/iter",
+            "range": "+/- 0.08"
+          },
+          {
+            "name": "swmr::read_idle::veloce_p64",
+            "value": 0.87,
+            "unit": "ns/iter",
+            "range": "+/- 0.04"
+          },
+          {
+            "name": "swmr::read_idle::veloce_p8",
+            "value": 0.9,
+            "unit": "ns/iter",
+            "range": "+/- 0.07"
+          },
+          {
+            "name": "swmr::read_idle::watch_p4k",
+            "value": 17.43,
+            "unit": "ns/iter",
+            "range": "+/- 1.60"
+          },
+          {
+            "name": "swmr::read_idle::watch_p64",
+            "value": 16.79,
+            "unit": "ns/iter",
+            "range": "+/- 1.58"
+          },
+          {
+            "name": "swmr::read_idle::watch_p8",
+            "value": 16.76,
+            "unit": "ns/iter",
+            "range": "+/- 1.59"
+          },
+          {
+            "name": "swmr::write_contended::arc_swap_p8_r1",
+            "value": 748.11,
+            "unit": "ns/iter",
+            "range": "+/- 49.73"
+          },
+          {
+            "name": "swmr::write_contended::arc_swap_p8_r3",
+            "value": 1575.69,
+            "unit": "ns/iter",
+            "range": "+/- 61.98"
+          },
+          {
+            "name": "swmr::write_contended::atomic_cell_p8_r1",
+            "value": 3.83,
+            "unit": "ns/iter",
+            "range": "+/- 0.41"
+          },
+          {
+            "name": "swmr::write_contended::atomic_cell_p8_r3",
+            "value": 7.84,
+            "unit": "ns/iter",
+            "range": "+/- 0.72"
+          },
+          {
+            "name": "swmr::write_contended::left_right_p8_r1",
+            "value": 515.21,
+            "unit": "ns/iter",
+            "range": "+/- 25.46"
+          },
+          {
+            "name": "swmr::write_contended::left_right_p8_r3",
+            "value": 508.95,
+            "unit": "ns/iter",
+            "range": "+/- 18.79"
+          },
+          {
+            "name": "swmr::write_contended::rwlock_p8_r1",
+            "value": 188.78,
+            "unit": "ns/iter",
+            "range": "+/- 13.61"
+          },
+          {
+            "name": "swmr::write_contended::rwlock_p8_r3",
+            "value": 175.89,
+            "unit": "ns/iter",
+            "range": "+/- 17.51"
+          },
+          {
+            "name": "swmr::write_contended::seqlock_p8_r1",
+            "value": 116.54,
+            "unit": "ns/iter",
+            "range": "+/- 11.32"
+          },
+          {
+            "name": "swmr::write_contended::seqlock_p8_r3",
+            "value": 144.75,
+            "unit": "ns/iter",
+            "range": "+/- 23.66"
+          },
+          {
+            "name": "swmr::write_contended::triple_buffer_p8_r1",
+            "value": 143.26,
+            "unit": "ns/iter",
+            "range": "+/- 6.14"
+          },
+          {
+            "name": "swmr::write_contended::veloce_p8_r1",
+            "value": 201.66,
+            "unit": "ns/iter",
+            "range": "+/- 6.99"
+          },
+          {
+            "name": "swmr::write_contended::veloce_p8_r3",
+            "value": 218.23,
+            "unit": "ns/iter",
+            "range": "+/- 6.70"
+          },
+          {
+            "name": "swmr::write_contended::watch_p8_r1",
+            "value": 691.58,
+            "unit": "ns/iter",
+            "range": "+/- 89.48"
+          },
+          {
+            "name": "swmr::write_contended::watch_p8_r3",
+            "value": 1575.47,
+            "unit": "ns/iter",
+            "range": "+/- 109.62"
+          },
+          {
+            "name": "swmr::write_contended_async::veloce_await_r1",
+            "value": 136.6,
+            "unit": "ns/iter",
+            "range": "+/- 19.10"
+          },
+          {
+            "name": "swmr::write_contended_async::veloce_await_r3",
+            "value": 329.88,
+            "unit": "ns/iter",
+            "range": "+/- 27.21"
+          },
+          {
+            "name": "swmr::write_contended_async::veloce_spin_r1",
+            "value": 318.72,
+            "unit": "ns/iter",
+            "range": "+/- 29.02"
+          },
+          {
+            "name": "swmr::write_contended_async::veloce_spin_r3",
+            "value": 322.78,
+            "unit": "ns/iter",
+            "range": "+/- 11.96"
+          },
+          {
+            "name": "swmr::write_contended_async::watch_await_r1",
+            "value": 298.77,
+            "unit": "ns/iter",
+            "range": "+/- 52.03"
+          },
+          {
+            "name": "swmr::write_contended_async::watch_await_r3",
+            "value": 917.68,
+            "unit": "ns/iter",
+            "range": "+/- 55.04"
+          },
+          {
+            "name": "swmr::write_contended_async::watch_spin_r1",
+            "value": 906.66,
+            "unit": "ns/iter",
+            "range": "+/- 436.16"
+          },
+          {
+            "name": "swmr::write_contended_async::watch_spin_r3",
+            "value": 1162.03,
+            "unit": "ns/iter",
+            "range": "+/- 110.97"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p4k_r1",
+            "value": 359.4,
+            "unit": "ns/iter",
+            "range": "+/- 34.63"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p4k_r3",
+            "value": 359.88,
+            "unit": "ns/iter",
+            "range": "+/- 36.02"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p64_r1",
+            "value": 301.63,
+            "unit": "ns/iter",
+            "range": "+/- 28.78"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p64_r3",
+            "value": 301.64,
+            "unit": "ns/iter",
+            "range": "+/- 28.47"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p8_r1",
+            "value": 305.66,
+            "unit": "ns/iter",
+            "range": "+/- 29.57"
+          },
+          {
+            "name": "swmr::write_idle::arc_swap_p8_r3",
+            "value": 302.51,
+            "unit": "ns/iter",
+            "range": "+/- 28.56"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p4k_r1",
+            "value": 30.52,
+            "unit": "ns/iter",
+            "range": "+/- 2.96"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p4k_r3",
+            "value": 30.76,
+            "unit": "ns/iter",
+            "range": "+/- 2.98"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p64_r1",
+            "value": 9.21,
+            "unit": "ns/iter",
+            "range": "+/- 0.86"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p64_r3",
+            "value": 9.9,
+            "unit": "ns/iter",
+            "range": "+/- 0.86"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p8_r1",
+            "value": 0.62,
+            "unit": "ns/iter",
+            "range": "+/- 0.05"
+          },
+          {
+            "name": "swmr::write_idle::atomic_cell_p8_r3",
+            "value": 0.63,
+            "unit": "ns/iter",
+            "range": "+/- 0.06"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p4k_r1",
+            "value": 146.97,
+            "unit": "ns/iter",
+            "range": "+/- 13.54"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p4k_r3",
+            "value": 157.82,
+            "unit": "ns/iter",
+            "range": "+/- 13.26"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p64_r1",
+            "value": 56.79,
+            "unit": "ns/iter",
+            "range": "+/- 5.06"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p64_r3",
+            "value": 57.66,
+            "unit": "ns/iter",
+            "range": "+/- 3.49"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p8_r1",
+            "value": 48.09,
+            "unit": "ns/iter",
+            "range": "+/- 4.35"
+          },
+          {
+            "name": "swmr::write_idle::left_right_p8_r3",
+            "value": 52.57,
+            "unit": "ns/iter",
+            "range": "+/- 5.00"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p4k_r1",
+            "value": 40.36,
+            "unit": "ns/iter",
+            "range": "+/- 3.72"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p4k_r3",
+            "value": 38.16,
+            "unit": "ns/iter",
+            "range": "+/- 3.53"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p64_r1",
+            "value": 17.05,
+            "unit": "ns/iter",
+            "range": "+/- 1.58"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p64_r3",
+            "value": 16.18,
+            "unit": "ns/iter",
+            "range": "+/- 1.57"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p8_r1",
+            "value": 14.79,
+            "unit": "ns/iter",
+            "range": "+/- 1.32"
+          },
+          {
+            "name": "swmr::write_idle::rwlock_p8_r3",
+            "value": 14.75,
+            "unit": "ns/iter",
+            "range": "+/- 1.74"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p4k_r1",
+            "value": 37.98,
+            "unit": "ns/iter",
+            "range": "+/- 2.81"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p4k_r3",
+            "value": 38.05,
+            "unit": "ns/iter",
+            "range": "+/- 3.69"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p64_r1",
+            "value": 15.91,
+            "unit": "ns/iter",
+            "range": "+/- 1.63"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p64_r3",
+            "value": 17.3,
+            "unit": "ns/iter",
+            "range": "+/- 1.54"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p8_r1",
+            "value": 15.34,
+            "unit": "ns/iter",
+            "range": "+/- 0.99"
+          },
+          {
+            "name": "swmr::write_idle::seqlock_p8_r3",
+            "value": 15.67,
+            "unit": "ns/iter",
+            "range": "+/- 1.51"
+          },
+          {
+            "name": "swmr::write_idle::triple_buffer_p4k_r1",
+            "value": 38.08,
+            "unit": "ns/iter",
+            "range": "+/- 3.49"
+          },
+          {
+            "name": "swmr::write_idle::triple_buffer_p64_r1",
+            "value": 7.87,
+            "unit": "ns/iter",
+            "range": "+/- 0.86"
+          },
+          {
+            "name": "swmr::write_idle::triple_buffer_p8_r1",
+            "value": 7.28,
+            "unit": "ns/iter",
+            "range": "+/- 0.68"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p4k_r1",
+            "value": 43.07,
+            "unit": "ns/iter",
+            "range": "+/- 4.12"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p4k_r3",
+            "value": 38.4,
+            "unit": "ns/iter",
+            "range": "+/- 3.61"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p64_r1",
+            "value": 14.29,
+            "unit": "ns/iter",
+            "range": "+/- 1.44"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p64_r3",
+            "value": 12.38,
+            "unit": "ns/iter",
+            "range": "+/- 1.06"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p8_r1",
+            "value": 13.59,
+            "unit": "ns/iter",
+            "range": "+/- 1.34"
+          },
+          {
+            "name": "swmr::write_idle::veloce_p8_r3",
+            "value": 11.59,
+            "unit": "ns/iter",
+            "range": "+/- 1.10"
+          },
+          {
+            "name": "swmr::write_idle::watch_p4k_r1",
+            "value": 306.49,
+            "unit": "ns/iter",
+            "range": "+/- 36.66"
+          },
+          {
+            "name": "swmr::write_idle::watch_p4k_r3",
+            "value": 312.66,
+            "unit": "ns/iter",
+            "range": "+/- 29.62"
+          },
+          {
+            "name": "swmr::write_idle::watch_p64_r1",
+            "value": 173.78,
+            "unit": "ns/iter",
+            "range": "+/- 19.51"
+          },
+          {
+            "name": "swmr::write_idle::watch_p64_r3",
+            "value": 174.38,
+            "unit": "ns/iter",
+            "range": "+/- 19.60"
+          },
+          {
+            "name": "swmr::write_idle::watch_p8_r1",
+            "value": 170.49,
+            "unit": "ns/iter",
+            "range": "+/- 16.27"
+          },
+          {
+            "name": "swmr::write_idle::watch_p8_r3",
+            "value": 173.02,
+            "unit": "ns/iter",
+            "range": "+/- 10.43"
           }
         ]
       }
