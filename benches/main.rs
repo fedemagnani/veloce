@@ -12,3 +12,7 @@ mod spsc {
     mod small_buffer;
     mod throughput;
 }
+
+mod swmr {
+    mod common;
+}
