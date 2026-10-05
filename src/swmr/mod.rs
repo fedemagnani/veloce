@@ -3,9 +3,47 @@
 //! Useful for publishing data from a single writer to an audience of multiple readers
 //! interested only in the latest version of the published data.
 //!
+//! ## Example
+//!
+//! ```rust
+//! use std::thread;
+//! use veloce::swmr::{self, SwmrError};
+//!
+//! // one writer and two readers, all starting from an empty `Vec`
+//! let (mut writer, readers) = swmr::register::<Vec<u64>, 2>(Vec::new());
+//!
+//! let handles = readers.map(|mut reader| {
+//!     thread::spawn(move || {
+//!         // spin until the writer drops, then borrow its final value without copying it
+//!         while !reader.is_closed() {
+//!             std::hint::spin_loop();
+//!         }
+//!         let latest = reader.latest();
+//!         latest.iter().sum::<u64>()
+//!     })
+//! });
+//!
+//! for v in 1..=10 {
+//!     // build each value from the latest one, reusing the allocation of the recycled slot
+//!     writer.update(|slot, latest| {
+//!         slot.clone_from(latest);
+//!         slot.push(v);
+//!     })?;
+//! }
+//! drop(writer);
+//!
+//! for handle in handles {
+//!     let sum = handle.join().unwrap();
+//!     assert_eq!(sum, 55);
+//! }
+//! # Ok::<(), SwmrError>(())
+//! ```
+//!
+//! ## Wait strategies
+//!
 //! How readers wait for new values is selected by the [`WaitStrategy`] type parameter:
 //! - [`Polling`] (default): readers poll [`Reader::has_changed`]
-//! - [`Async`] (`async` feature): readers can await [`Reader::changed`]
+//! - [`Async`] (`async` feature): readers can await [`Reader::changed`], see [`register_async`]
 //!
 //! ## Progress guarantees
 //!
@@ -21,6 +59,14 @@
 //! \*\* [`Reader::latest`] retries pinning as long as the writer keeps committing meanwhile
 //!
 //! \*\*\* polling [`Reader::changed`] registers the task's waker, which runs executor code
+//!
+// async-only items are linked only when the `async` feature is enabled, otherwise they point to the strategies above
+#![cfg_attr(feature = "async", doc = "[`Async`]: Async")]
+#![cfg_attr(feature = "async", doc = "[`Reader::changed`]: AsyncReader::changed")]
+#![cfg_attr(feature = "async", doc = "[`register_async`]: register_async")]
+#![cfg_attr(not(feature = "async"), doc = "[`Async`]: #wait-strategies")]
+#![cfg_attr(not(feature = "async"), doc = "[`Reader::changed`]: #wait-strategies")]
+#![cfg_attr(not(feature = "async"), doc = "[`register_async`]: #wait-strategies")]
 
 #[cfg(feature = "async")]
 mod r#async;
@@ -61,6 +107,38 @@ pub fn register<T: Clone, const N: usize>(initial: T) -> (Writer<T>, [Reader<T>;
 }
 
 /// Creates a register with `N` readers awaiting new values, every slot starting as a clone of `initial`
+///
+/// ```rust
+/// use std::thread;
+/// use futures::executor::block_on;
+/// use veloce::swmr::{self, SwmrError};
+///
+/// let (mut writer, [mut reader]) = swmr::register_async::<u64, 1>(0);
+///
+/// let handle = thread::spawn(move || {
+///     block_on(async {
+///         let mut seen = Vec::new();
+///         // resolves on each value not yet read, the initial one included, and errors once the writer drops
+///         while reader.changed().await.is_ok() {
+///             let latest = *reader.latest();
+///             seen.push(latest);
+///         }
+///         seen
+///     })
+/// });
+///
+/// for v in 1..=3 {
+///     writer.publish(v)?;
+/// }
+/// drop(writer);
+///
+/// // intermediate values may be skipped, but the final one is always seen
+/// let seen = handle.join().unwrap();
+/// let last = seen.last();
+/// assert_eq!(last, Some(&3));
+/// assert!(seen.is_sorted());
+/// # Ok::<(), SwmrError>(())
+/// ```
 #[cfg(feature = "async")]
 pub fn register_async<T: Clone, const N: usize>(
     initial: T,
