@@ -1,4 +1,4 @@
-//! Reads of the latest value while the writer publishes nonstop and the other readers read nonstop
+//! Reads of the latest value while the writer publishes at a fixed rate and the other readers read nonstop
 
 use std::{
     sync::{
@@ -8,14 +8,14 @@ use std::{
     thread,
 };
 
-use test::{Bencher, black_box};
+use test::Bencher;
 
 use super::common::{
     ArcSwap, AtomicCell, Latest, LeftRight, Payload, RwLock, SeqLock, TripleBuffer, Veloce, Watch,
-    read_until, write_until,
+    read_seq, read_until, write_until,
 };
 
-/// Reads once per iteration on the bench thread, while the writer and the other `N - 1` readers spin
+/// Reads once per iteration on the bench thread, while the paced writer and the other `N - 1` readers run
 fn read_contended<L: Latest<Payload<S>>, const S: usize, const N: usize>(b: &mut Bencher) {
     let init = Payload::new(0);
     // handles are owned here and only borrowed by the threads, so none drops while others still run
@@ -37,16 +37,12 @@ fn read_contended<L: Latest<Payload<S>>, const S: usize, const N: usize>(b: &mut
         for reader in background {
             s.spawn(move || {
                 barrier.wait();
-                read_until::<L, _>(reader, stop);
+                read_until::<L, S>(reader, stop);
             });
         }
 
         barrier.wait();
-        b.iter(|| {
-            L::read(measured, |latest| {
-                black_box(latest);
-            })
-        });
+        b.iter(|| read_seq::<L, S>(measured));
         stop.store(true, Ordering::Relaxed);
     });
 }

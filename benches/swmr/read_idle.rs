@@ -1,22 +1,18 @@
 //! Reads of the latest value with no concurrent writes: the cost of each read path alone
 
-use test::{Bencher, black_box};
+use test::Bencher;
 
 use super::common::{
-    ArcSwap, AtomicCell, Latest, LeftRight, P4K, P8, P64, RwLock, SeqLock, TripleBuffer, Veloce,
-    Watch,
+    ArcSwap, AtomicCell, Latest, LeftRight, Payload, RwLock, SeqLock, TripleBuffer, Veloce, Watch,
+    read_seq,
 };
 
 /// Reads the latest value once per iteration, the writer staying idle
-fn read_idle<L: Latest<T>, T>(b: &mut Bencher, init: T) {
+fn read_idle<L: Latest<Payload<S>>, const S: usize>(b: &mut Bencher) {
+    let init = Payload::new(0);
     // the writer is kept alive, as some libraries stop serving reads once it drops
     let (_writer, [mut reader]) = L::create::<1>(init);
-    b.iter(|| {
-        L::read(&mut reader, |latest| {
-            // forces copying libraries to materialize the value they copied out
-            black_box(latest);
-        })
-    });
+    b.iter(|| read_seq::<L, S>(&mut reader));
 }
 
 macro_rules! bench_read_idle {
@@ -25,20 +21,17 @@ macro_rules! bench_read_idle {
             $(
                 #[bench]
                 fn [<$name _p8>](b: &mut Bencher) {
-                    let init = P8::new(0);
-                    read_idle::<$lib, _>(b, init);
+                    read_idle::<$lib, 8>(b);
                 }
 
                 #[bench]
                 fn [<$name _p64>](b: &mut Bencher) {
-                    let init = P64::new(0);
-                    read_idle::<$lib, _>(b, init);
+                    read_idle::<$lib, 64>(b);
                 }
 
                 #[bench]
                 fn [<$name _p4k>](b: &mut Bencher) {
-                    let init = P4K::new(0);
-                    read_idle::<$lib, _>(b, init);
+                    read_idle::<$lib, 4096>(b);
                 }
             )*
         }

@@ -14,8 +14,11 @@ mod spsc {
 }
 
 mod swmr {
+    #[cfg(feature = "async")]
+    mod async_notify;
     mod common;
     mod create;
+    mod propagation;
     mod read_contended;
     mod read_idle;
     mod write_contended;

@@ -31,7 +31,7 @@ fn write_contended<L: Latest<P8>, const N: usize>(b: &mut Bencher) {
         for reader in &mut readers {
             s.spawn(move || {
                 barrier.wait();
-                read_until::<L, _>(reader, stop);
+                read_until::<L, 8>(reader, stop);
             });
         }
 

@@ -1,11 +1,18 @@
 //! Payloads and per-library adapters; reads go through a visitor, so only libraries copying out pay for a copy
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    hint::spin_loop,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use test::black_box;
+
+/// Period between the starts of two writes of a paced writer, well above the slowest write
+pub const WRITE_PERIOD: Duration = Duration::from_micros(1);
 
 /// Payload of `S` bytes, the first 8 holding a sequence number
 #[derive(Clone, Copy)]
@@ -34,8 +41,6 @@ impl<const S: usize> Payload<S> {
 pub type P8 = Payload<8>;
 /// Fills a cache line
 pub type P64 = Payload<64>;
-/// Fills a memory page, where copying out dominates
-pub type P4K = Payload<4096>;
 
 /// A single-writer-multi-reader primitive publishing the latest `T`
 pub trait Latest<T> {
@@ -262,25 +267,40 @@ impl<T: Copy + Send> Latest<T> for AtomicCell {
     }
 }
 
+/// Reads the sequence number of the latest value, touching its first cache line without copying the rest
+pub fn read_seq<L: Latest<Payload<S>>, const S: usize>(reader: &mut L::Reader) -> u64 {
+    let seq = L::read(reader, Payload::seq);
+    black_box(seq)
+}
+
 /// Reads the latest value nonstop until `stop` is set
-pub fn read_until<L: Latest<T>, T>(reader: &mut L::Reader, stop: &AtomicBool) {
+pub fn read_until<L: Latest<Payload<S>>, const S: usize>(
+    reader: &mut L::Reader,
+    stop: &AtomicBool,
+) {
     while !stop.load(Ordering::Relaxed) {
-        L::read(reader, |latest| {
-            black_box(latest);
-        });
+        read_seq::<L, S>(reader);
     }
 }
 
-/// Writes increasing sequence numbers nonstop until `stop` is set
+/// Writes increasing sequence numbers every [`WRITE_PERIOD`] until `stop` is set
 pub fn write_until<L: Latest<Payload<S>>, const S: usize>(
     writer: &mut L::Writer,
     stop: &AtomicBool,
 ) {
     let mut seq = 0;
+    let mut next_write = Instant::now();
     while !stop.load(Ordering::Relaxed) {
+        let now = Instant::now();
+        if now < next_write {
+            spin_loop();
+            continue;
+        }
         seq += 1;
         let value = Payload::new(seq);
         L::write(writer, value);
+        // scheduled from this write's start, so a late write shifts the schedule instead of bursting
+        next_write = now + WRITE_PERIOD;
     }
 }
 
