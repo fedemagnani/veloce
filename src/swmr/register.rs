@@ -189,16 +189,16 @@ where
         avaiblable.trailing_zeros() as usize
     }
 
-    /// Consume the [`Register`] creating the single [`Writer`] and the multi [`Reader`]s
-    pub fn split(self) -> (Writer<T, W>, Vec<Reader<T, W>>) {
+    /// Consume the [`Register`] creating the single [`Writer`] and its `N` [`Reader`]s
+    pub fn split<const N: usize>(self) -> (Writer<T, W>, [Reader<T, W>; N]) {
+        let num_readers = self.busy_slots.len();
+        assert_eq!(N, num_readers, "N != num_readers");
+
         let register = Arc::new(self);
 
         let writer = Writer::from(register.clone());
 
-        let num_readers = register.busy_slots.len();
-        let readers = (0..num_readers)
-            .map(|i| Reader::new(register.clone(), i))
-            .collect();
+        let readers = std::array::from_fn(|i| Reader::new(register.clone(), i));
 
         (writer, readers)
     }

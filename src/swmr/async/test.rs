@@ -17,7 +17,7 @@ use futures::{
 };
 
 use super::Async;
-use crate::swmr::{SwmrError, reader::Reader, register::Register, writer::Writer};
+use crate::swmr::{SwmrError, reader::Reader, register::Register, register_async, writer::Writer};
 
 /// Waker counting how many times it has been woken
 struct WakeCounter(AtomicUsize);
@@ -36,11 +36,7 @@ fn wake_counter() -> Arc<WakeCounter> {
 /// `changed` resolves only on a value not yet returned by `latest`, the initial one included
 #[test]
 fn changed_resolves_on_unseen_value() -> Result<(), SwmrError> {
-    let num_readers = 1;
-
-    let register = Register::<u64, Async>::new(num_readers, || 0);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register_async::<u64, 1>(0);
     let reader = &mut readers[0];
 
     let initial = reader.changed().now_or_never();
@@ -104,11 +100,7 @@ fn commit_wakes_waiting_reader() -> Result<(), SwmrError> {
 /// Dropping the writer wakes the waiting reader, which then observes the disconnection
 #[test]
 fn writer_drop_wakes_waiting_reader() {
-    let num_readers = 1;
-
-    let register = Arc::new(Register::<u64, Async>::new(num_readers, || 0));
-    let writer = Writer::from(register.clone());
-    let mut reader = Reader::new(register.clone(), 0);
+    let (writer, [mut reader]) = register_async::<u64, 1>(0);
 
     let counter = wake_counter();
     let waker = waker(counter.clone());
@@ -130,11 +122,7 @@ fn writer_drop_wakes_waiting_reader() {
 /// A value committed right before dropping the writer is reported before the disconnection
 #[test]
 fn changed_reports_final_value_before_disconnection() -> Result<(), SwmrError> {
-    let num_readers = 1;
-
-    let register = Register::<u64, Async>::new(num_readers, || 0);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register_async::<u64, 1>(0);
     let reader = &mut readers[0];
     reader.latest();
 
@@ -156,11 +144,10 @@ fn changed_reports_final_value_before_disconnection() -> Result<(), SwmrError> {
 /// Readers awaiting on other threads never miss a wake-up, observing the final value
 #[test]
 fn no_lost_wakeups_across_threads() -> Result<(), SwmrError> {
-    let num_readers = 4;
+    const NUM_READERS: usize = 4;
     let num_commits = 10_000;
 
-    let register = Register::<u64, Async>::new(num_readers, || 0);
-    let (mut writer, readers) = register.split();
+    let (mut writer, readers) = register_async::<u64, NUM_READERS>(0);
 
     let (done_tx, done_rx) = mpsc::channel();
     for mut reader in readers {
@@ -189,7 +176,7 @@ fn no_lost_wakeups_across_threads() -> Result<(), SwmrError> {
 
     // a lost wake-up leaves the reader parked forever, so we bound the wait
     let timeout = Duration::from_secs(10);
-    for _ in 0..num_readers {
+    for _ in 0..NUM_READERS {
         let last = done_rx
             .recv_timeout(timeout)
             .expect("reader missed a wake-up");

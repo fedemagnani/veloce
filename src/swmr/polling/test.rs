@@ -4,6 +4,7 @@ use super::Polling;
 use crate::swmr::{
     SwmrError,
     reader::Reader,
+    register,
     register::{Register, SlotHeader},
     sealed::SealedWaitStrategy,
     writer::Writer,
@@ -11,15 +12,7 @@ use crate::swmr::{
 
 #[test]
 fn single_thread() -> Result<(), SwmrError> {
-    let num_readers = 2;
-
-    let init_slot = || 0;
-
-    let register = Register::<u64, Polling>::new(num_readers, init_slot);
-
-    let (mut writer, mut readers) = register.split();
-
-    assert_eq!(readers.len(), 2);
+    let (mut writer, mut readers) = register::<u64, 2>(0);
 
     let slot_updater = |old_val: &mut u64, new_val: u64| *old_val = new_val;
 
@@ -42,11 +35,7 @@ fn single_thread() -> Result<(), SwmrError> {
 /// the producer has published a new value
 #[test]
 fn held_reference_survives_publishes() -> Result<(), SwmrError> {
-    let num_readers = 1;
-
-    let register = Register::<u64, Polling>::new(num_readers, || 0);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register::<u64, 1>(0);
     let reader = &mut readers[0];
 
     writer.stage(|stored| *stored = 1);
@@ -111,11 +100,7 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
 /// The version counts the commits, and tells the reader whether its held value is outdated
 #[test]
 fn version_tracks_commits() -> Result<(), SwmrError> {
-    let num_readers = 1;
-
-    let register = Register::<u64, Polling>::new(num_readers, || 0);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register::<u64, 1>(0);
     let reader = &mut readers[0];
 
     // the initial value has not been seen yet
@@ -157,11 +142,7 @@ fn version_tracks_commits() -> Result<(), SwmrError> {
 /// Staging with the latest value allows delta updates, even after slots are recycled
 #[test]
 fn stage_with_latest_applies_deltas() -> Result<(), SwmrError> {
-    let num_readers = 2;
-
-    let register = Register::<Vec<u64>, Polling>::new(num_readers, Vec::new);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register::<Vec<u64>, 2>(Vec::new());
 
     // more publishes than slots, so each staged slot starts from a stale value
     let num_commits = 10;
@@ -206,11 +187,7 @@ fn slot_info_version_wraps() {
 /// while a staged value not yet committed is discarded
 #[test]
 fn writer_drop_closes_register() -> Result<(), SwmrError> {
-    let num_readers = 2;
-
-    let register = Register::<u64, Polling>::new(num_readers, || 0);
-
-    let (mut writer, mut readers) = register.split();
+    let (mut writer, mut readers) = register::<u64, 2>(0);
 
     writer.stage(|stored| *stored = 1);
     writer.commit()?;
