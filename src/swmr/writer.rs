@@ -16,6 +16,21 @@ impl<T, W> Writer<T, W>
 where
     W: WaitStrategy,
 {
+    /// Stages `value` and commits it, overriding any value staged and not yet committed
+    pub fn publish(&mut self, value: T) -> Result<(), SwmrError> {
+        self.update(|slot, _| *slot = value)
+    }
+
+    /// Stages via `setter`, which also receives the latest committed value, and commits it
+    pub fn update(&mut self, setter: impl FnOnce(&mut T, &T)) -> Result<(), SwmrError> {
+        // no reader can ever see the value, so the setter is not even run
+        if self.is_disconnected() {
+            return Err(SwmrError::Disconnected);
+        }
+        self.stage_with_latest(setter);
+        self.commit()
+    }
+
     /// Uses the closure passed as input in order to set a value in the
     /// available slot. It doesn't publish the value yet.
     pub fn stage(&mut self, setter: impl FnOnce(&mut T)) {
