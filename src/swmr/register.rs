@@ -157,10 +157,10 @@ where
     }
 
     /// Scan all the hazard pointers to identify which slots are currently read by consumers.
-    /// Then, it returns the available slot with lowest index.
+    /// Then, it returns the bitmap of the available slots, never empty since there are two more slots than readers.
     ///
     /// Must be called by the single [`Writer`] only, since it is the one advancing `current`.
-    pub(super) fn first_available_slot(&self) -> usize {
+    pub(super) fn free_slots(&self) -> u64 {
         // define the bitmap used to accumulate the busy slots. The LSB is associated with
         // the first slot.
         let mut forbidden: u64 = 0;
@@ -187,10 +187,7 @@ where
         };
         let available = !forbidden;
         // from available, we set to zero all the bits which are > slots.len()
-        let avaiblable = available & mask;
-
-        // starting from LSB, count how many bits before the first one
-        avaiblable.trailing_zeros() as usize
+        available & mask
     }
 
     /// Consume the [`Register`] creating the single [`Writer`] and its `N` [`Reader`]s

@@ -104,6 +104,30 @@ fn update_sees_latest() -> Result<(), SwmrError> {
     Ok(())
 }
 
+/// Values held from different versions survive publishes recycling every other slot
+#[test]
+fn held_values_survive_slot_recycling() -> Result<(), SwmrError> {
+    let (mut writer, [mut r0, mut r1, mut r2]) = register::<u64, 3>(0);
+
+    // each reader pins a distinct slot
+    let held0 = r0.latest();
+    writer.publish(1)?;
+    let held1 = r1.latest();
+    writer.publish(2)?;
+    let held2 = r2.latest();
+
+    let num_publishes = 1_000;
+    for v in 3..num_publishes {
+        writer.publish(v)?;
+    }
+
+    assert_eq!(*held0, 0);
+    assert_eq!(*held1, 1);
+    assert_eq!(*held2, 2);
+
+    Ok(())
+}
+
 /// Once every reader is dropped, the shortcuts error without running the setter
 #[test]
 fn shortcuts_error_once_readers_dropped() {

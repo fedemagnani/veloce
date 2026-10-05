@@ -35,6 +35,11 @@ macro_rules! bench_write_idle {
                 }
 
                 #[bench]
+                fn [<$name _p64_r $readers>](b: &mut Bencher) {
+                    write_idle::<$lib, 64, $readers>(b);
+                }
+
+                #[bench]
                 fn [<$name _p4k_r $readers>](b: &mut Bencher) {
                     write_idle::<$lib, 4096, $readers>(b);
                 }

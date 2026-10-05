@@ -9,7 +9,9 @@ where
     W: WaitStrategy,
 {
     register: Arc<Register<T, W>>,
-    staged: Option<usize>,
+    staged_slot: Option<usize>,
+    /// Slots found free by the last scan and not staged since: none can be pinned before being committed again
+    pub(super) cached_free_slots: u64,
 }
 
 impl<T, W> Writer<T, W>
@@ -39,9 +41,10 @@ where
 
     /// Like [`Writer::stage`], but the closure also receives the latest committed value
     pub fn stage_with_latest(&mut self, setter: impl FnOnce(&mut T, &T)) {
-        let staged_idx = self
-            .staged
-            .unwrap_or_else(|| self.register.first_available_slot());
+        let staged_idx = match self.staged_slot {
+            Some(staged_idx) => staged_idx,
+            None => self.take_free_slot(),
+        };
         // the writer is the only one advancing `current`, so it can load it with relaxed ordering
         let current = self.register.current.load(Ordering::Relaxed);
         // the staged slot is never the current one
@@ -51,7 +54,7 @@ where
         // in single-writer flavor, the writer has exclusive access
         let slot_mut = unsafe { &mut *self.register.slots[staged_idx].get() };
         setter(slot_mut, latest);
-        self.staged = Some(staged_idx);
+        self.staged_slot = Some(staged_idx);
     }
 
     /// Updates the slot number containing the most recent data, notifying the readers
@@ -59,7 +62,7 @@ where
         if self.is_disconnected() {
             return Err(SwmrError::Disconnected);
         }
-        let Some(idx) = self.staged.take() else {
+        let Some(idx) = self.staged_slot.take() else {
             return Err(SwmrError::ValueNotStaged);
         };
         // the writer is the only one advancing `current`, so it can load it with relaxed ordering
@@ -70,6 +73,22 @@ where
         self.notify_readers();
 
         Ok(())
+    }
+
+    /// Takes the lowest slot found free, scanning the hazard pointers only once every free slot is taken
+    fn take_free_slot(&mut self) -> usize {
+        // a slot retired after the last scan is not in `free`, so it waits for the next scan to be reused
+        if self.cached_free_slots == 0 {
+            self.cached_free_slots = self.register.free_slots();
+        }
+        debug_assert_ne!(
+            self.cached_free_slots, 0,
+            "no free slot among num_readers + 2"
+        );
+        let slot = self.cached_free_slots.trailing_zeros() as usize;
+        // clears the lowest set bit, i.e. the slot just taken
+        self.cached_free_slots &= self.cached_free_slots - 1;
+        slot
     }
 
     fn is_disconnected(&self) -> bool {
@@ -105,7 +124,8 @@ where
     fn from(value: Arc<Register<T, W>>) -> Self {
         Self {
             register: value,
-            staged: None,
+            staged_slot: None,
+            cached_free_slots: 0,
         }
     }
 }

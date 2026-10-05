@@ -112,12 +112,12 @@ fn polling_max_readers() -> Result<(), SwmrError> {
 
 #[cfg(feature = "async")]
 mod r#async {
-    use std::thread;
+    use std::{sync::mpsc, thread};
 
     use futures::executor::block_on;
     use veloce::swmr::{self, AsyncReader, SwmrError};
 
-    use super::{COMMITS, Page, check_latest, page, publish_all};
+    use super::{COMMITS, Page, check_latest, check_untorn, page, publish_all};
 
     /// Awaits each change until the writer drops, returning the sequence number of the final value
     async fn await_until_closed(reader: &mut AsyncReader<Page>) -> u64 {
@@ -164,5 +164,43 @@ mod r#async {
     #[cfg_attr(miri, ignore = "too many threads to interpret")]
     fn async_max_readers() -> Result<(), SwmrError> {
         stress_async::<62>()
+    }
+
+    /// Rounds of the wake-up handshake: each races one publish against one reader starting to wait
+    #[cfg(not(miri))]
+    const HANDSHAKES: u64 = 10_000;
+    #[cfg(miri)]
+    const HANDSHAKES: u64 = 20;
+
+    /// A lost wake-up deadlocks: the writer stays alive, blocked on the acknowledgement, so no drop wakes the reader
+    #[test]
+    fn async_wakeup_handshake() -> Result<(), SwmrError> {
+        let initial = page(0);
+        let (mut writer, [mut reader]) = swmr::register_async::<Page, 1>(initial);
+        let (ack_tx, ack_rx) = mpsc::sync_channel(0);
+        // seen before the writer starts, so each `changed` below can only resolve on the publish it races with
+        reader.latest();
+
+        // moved in, so a failing writer drops `ack_rx` and the blocked reader fails instead of hanging the scope
+        thread::scope(move |s| {
+            s.spawn(move || {
+                block_on(async {
+                    for _ in 1..=HANDSHAKES {
+                        let changed = reader.changed().await;
+                        changed.expect("writer alive");
+                        let seq = check_untorn(reader.latest());
+                        ack_tx.send(seq).expect("writer alive");
+                    }
+                })
+            });
+
+            for seq in 1..=HANDSHAKES {
+                let value = page(seq);
+                writer.publish(value)?;
+                let acked = ack_rx.recv().expect("reader alive");
+                assert_eq!(acked, seq);
+            }
+            Ok(())
+        })
     }
 }

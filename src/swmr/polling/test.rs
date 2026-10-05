@@ -97,6 +97,52 @@ fn fast_path_skips_hazard_store() -> Result<(), SwmrError> {
     Ok(())
 }
 
+/// The writer stages from the slots found free by one scan until none is left, so a slot retired meanwhile waits for the next scan
+#[test]
+fn free_slots_cached_until_taken() -> Result<(), SwmrError> {
+    let num_readers = 2;
+
+    let register = Arc::new(Register::<u64, Polling>::new(num_readers, || 0));
+    let mut writer = Writer::from(register.clone());
+    let mut r0 = Reader::new(register.clone(), 0);
+    let mut r1 = Reader::new(register.clone(), 1);
+
+    // both readers pin slot 0, holding the initial value
+    let held0 = *r0.latest();
+    let held1 = *r1.latest();
+    assert_eq!((held0, held1), (0, 0));
+
+    // the first stage scans: slot 0 is current and pinned, so slots 1 to 3 are free
+    writer.publish(1)?;
+    let current = register.current.load(Ordering::SeqCst).slot();
+    assert_eq!(current, 1);
+    let free = writer.cached_free_slots;
+    assert_eq!(free, 0b1100);
+
+    // slot 1 is retired and unpinned, yet the writer keeps taking from the scanned slots
+    writer.publish(2)?;
+    let current = register.current.load(Ordering::SeqCst).slot();
+    assert_eq!(current, 2);
+    writer.publish(3)?;
+    let current = register.current.load(Ordering::SeqCst).slot();
+    assert_eq!(current, 3);
+    let free = writer.cached_free_slots;
+    assert_eq!(free, 0);
+
+    // the next stage scans again: slot 3 is current and slot 0 still pinned, so slots 1 and 2 are free
+    writer.publish(4)?;
+    let current = register.current.load(Ordering::SeqCst).slot();
+    assert_eq!(current, 1);
+    let free = writer.cached_free_slots;
+    assert_eq!(free, 0b0100);
+
+    // the pinned slot was never staged, so it still holds the initial value
+    let slot0 = unsafe { *register.slots[0].get() };
+    assert_eq!(slot0, 0);
+
+    Ok(())
+}
+
 /// The version counts the commits, and tells the reader whether its held value is outdated
 #[test]
 fn version_tracks_commits() -> Result<(), SwmrError> {
