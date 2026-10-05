@@ -72,17 +72,21 @@ impl SlotHeader {
 /// Atomic cell holding a [`SlotHeader`]
 pub(super) struct AtomicSlotInfo(AtomicUsize);
 
+// `#[inline]` lets other crates resolve `order` at compile time, instead of calling out and branching on it
 impl AtomicSlotInfo {
+    #[inline]
     pub(super) fn new(info: SlotHeader) -> Self {
         let raw = AtomicUsize::new(info.0);
         Self(raw)
     }
 
+    #[inline]
     pub(super) fn load(&self, order: Ordering) -> SlotHeader {
         let raw = self.0.load(order);
         SlotHeader(raw)
     }
 
+    #[inline]
     pub(super) fn store(&self, info: SlotHeader, order: Ordering) {
         self.0.store(info.0, order);
     }

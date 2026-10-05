@@ -76,8 +76,8 @@ where
         loop {
             // mark this slot as busy
             hp.store(current.slot(), Ordering::SeqCst);
-            // check if during the atomic-store a new value was committed
-            let new_current = self.register.current.load(Ordering::Acquire);
+            // check if a new value was committed meanwhile; SeqCst, as Acquire may validate a slot the writer is recycling
+            let new_current = self.register.current.load(Ordering::SeqCst);
             if new_current.version() == current.version() {
                 break;
             }
