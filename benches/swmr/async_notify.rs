@@ -10,72 +10,7 @@ use crossbeam_utils::CachePadded;
 use futures::executor::block_on;
 use test::Bencher;
 
-use super::common::P8;
-
-/// A single-writer-multi-reader primitive whose readers can await a value not seen yet
-trait Notify {
-    type Writer: Send;
-    type Reader: Send;
-
-    /// Creates the writer and `N` readers, all starting from sequence number zero
-    fn create<const N: usize>() -> (Self::Writer, [Self::Reader; N]);
-
-    /// Publishes the value carrying `seq`
-    fn write(writer: &mut Self::Writer, seq: u64);
-
-    /// Waits for a value not seen yet and returns its sequence number, `None` once the writer drops
-    async fn changed(reader: &mut Self::Reader) -> Option<u64>;
-}
-
-/// `veloce::swmr` with async readers
-struct Veloce;
-
-impl Notify for Veloce {
-    type Writer = veloce::swmr::AsyncWriter<P8>;
-    type Reader = veloce::swmr::AsyncReader<P8>;
-
-    fn create<const N: usize>() -> (Self::Writer, [Self::Reader; N]) {
-        let init = P8::new(0);
-        veloce::swmr::register_async(init)
-    }
-
-    fn write(writer: &mut Self::Writer, seq: u64) {
-        let value = P8::new(seq);
-        writer.publish(value).expect("readers alive");
-    }
-
-    async fn changed(reader: &mut Self::Reader) -> Option<u64> {
-        reader.changed().await.ok()?;
-        let latest = reader.latest();
-        Some(latest.seq())
-    }
-}
-
-/// `tokio::sync::watch`
-struct Watch;
-
-impl Notify for Watch {
-    type Writer = tokio::sync::watch::Sender<P8>;
-    type Reader = tokio::sync::watch::Receiver<P8>;
-
-    fn create<const N: usize>() -> (Self::Writer, [Self::Reader; N]) {
-        let init = P8::new(0);
-        let (tx, rx) = tokio::sync::watch::channel(init);
-        let readers = std::array::from_fn(|_| rx.clone());
-        (tx, readers)
-    }
-
-    fn write(writer: &mut Self::Writer, seq: u64) {
-        let value = P8::new(seq);
-        writer.send_replace(value);
-    }
-
-    async fn changed(reader: &mut Self::Reader) -> Option<u64> {
-        reader.changed().await.ok()?;
-        let latest = reader.borrow_and_update();
-        Some(latest.seq())
-    }
-}
+use super::notify::{Notify, Veloce, Watch};
 
 /// Writes once per iteration, then waits until each of the `N` readers acknowledges the value
 fn async_notify<L: Notify, const N: usize>(b: &mut Bencher) {

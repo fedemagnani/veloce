@@ -18,8 +18,13 @@ mod swmr {
     mod async_notify;
     mod common;
     mod create;
+    #[cfg(feature = "async")]
+    mod notify;
     mod propagation;
     mod read_contended;
     mod read_idle;
     mod write_contended;
+    #[cfg(feature = "async")]
+    mod write_contended_async;
+    mod write_idle;
 }
