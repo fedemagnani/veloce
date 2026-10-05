@@ -1,6 +1,8 @@
-//! Non-generic instances of the swmr hot paths, so `scripts/swmr-codegen.sh` can disassemble them by symbol
+//! Non-generic instances of the swmr hot paths, so `benches/swmr/codegen.sh` can disassemble them by symbol
 
-use veloce::swmr::{AsyncReader, AsyncWriter, Reader, SwmrError, Writer};
+#[cfg(feature = "async")]
+use veloce::swmr::{AsyncReader, AsyncWriter};
+use veloce::swmr::{Reader, SwmrError, Writer};
 
 /// Word-sized payload
 pub type P8 = u64;
@@ -25,16 +27,16 @@ pub fn swmr_latest_p8(reader: &mut Reader<P8>) -> P8 {
     *reader.latest()
 }
 
+#[cfg(feature = "async")]
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub fn swmr_publish_async_p8(writer: &mut AsyncWriter<P8>, value: P8) -> Result<(), SwmrError> {
     writer.publish(value)
 }
 
+#[cfg(feature = "async")]
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub fn swmr_latest_async_p8(reader: &mut AsyncReader<P8>) -> P8 {
     *reader.latest()
 }
-
-fn main() {}

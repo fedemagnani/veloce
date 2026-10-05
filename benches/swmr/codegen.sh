@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Emits the assembly of the swmr hot paths in examples/swmr_codegen.rs, one file per symbol and target.
-# Usage: scripts/swmr-codegen.sh [target...]   (default: the host; e.g. add x86_64-apple-ios on Apple silicon)
+# Emits the assembly of the swmr hot paths in benches/swmr/codegen.rs, one file per symbol and target.
+# Usage: benches/swmr/codegen.sh [target...]   (default: the host; e.g. add x86_64-apple-ios on Apple silicon)
 set -euo pipefail
 
 toolchain="${TOOLCHAIN:-nightly}"
@@ -11,14 +11,14 @@ if [ ${#targets[@]} -eq 0 ]; then
 fi
 
 symbols=(swmr_publish_p8 swmr_publish_p4k swmr_latest_p8 swmr_publish_async_p8 swmr_latest_async_p8)
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../.." && pwd)"
 out_root="$root/target/swmr-codegen"
 
 for target in "${targets[@]}"; do
-    # assembly only, so targets whose linker is missing still work
-    cargo +"$toolchain" rustc --quiet --release --example swmr_codegen --target "$target" -- --emit asm
+    # the bench profile and features `cargo bench` uses; assembly only, so targets whose linker is missing still work
+    cargo +"$toolchain" rustc --quiet --profile bench --features bench --bench main --target "$target" -- --emit asm
     # newest listing, as its location depends on the cargo version's build directory layout
-    asm="$(find "$root/target/$target/release" -name 'swmr_codegen*.s' -print0 | xargs -0 ls -t | head -1)"
+    asm="$(find "$root/target/$target/release" -name 'main-*.s' -print0 | xargs -0 ls -t | head -1)"
     out="$out_root/$target"
     mkdir -p "$out"
 

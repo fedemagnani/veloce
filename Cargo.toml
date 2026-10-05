@@ -31,10 +31,6 @@ left-right = "0.11.8"
 triple_buffer = "9.0.0"
 seqlock = "0.2.0"
 
-[[example]]
-name = "swmr_codegen"
-required-features = ["async"]
-
 [[bench]]
 name = "main"
 required-features = ["bench"]
