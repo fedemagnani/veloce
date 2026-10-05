@@ -1,6 +1,11 @@
 //! Payloads and per-library adapters; reads go through a visitor, so only libraries copying out pay for a copy
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+use test::black_box;
 
 /// Payload of `S` bytes, the first 8 holding a sequence number
 #[derive(Clone, Copy)]
@@ -254,6 +259,28 @@ impl<T: Copy + Send> Latest<T> for AtomicCell {
     fn read<R>(reader: &mut Self::Reader, f: impl FnOnce(&T) -> R) -> R {
         let latest = reader.load();
         f(&latest)
+    }
+}
+
+/// Reads the latest value nonstop until `stop` is set
+pub fn read_until<L: Latest<T>, T>(reader: &mut L::Reader, stop: &AtomicBool) {
+    while !stop.load(Ordering::Relaxed) {
+        L::read(reader, |latest| {
+            black_box(latest);
+        });
+    }
+}
+
+/// Writes increasing sequence numbers nonstop until `stop` is set
+pub fn write_until<L: Latest<Payload<S>>, const S: usize>(
+    writer: &mut L::Writer,
+    stop: &AtomicBool,
+) {
+    let mut seq = 0;
+    while !stop.load(Ordering::Relaxed) {
+        seq += 1;
+        let value = Payload::new(seq);
+        L::write(writer, value);
     }
 }
 

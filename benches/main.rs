@@ -16,5 +16,7 @@ mod spsc {
 mod swmr {
     mod common;
     mod create;
+    mod read_contended;
     mod read_idle;
+    mod write_contended;
 }
