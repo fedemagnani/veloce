@@ -1,0 +1,9 @@
+[package]
+name = "codegen"
+version = "0.0.0"
+edition = "2024"
+description = "Assembly-aware analysis of veloce's hot paths"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
