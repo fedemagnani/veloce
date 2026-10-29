@@ -4,6 +4,8 @@ extern crate test;
 
 mod perfect_hash {
     mod common;
+    #[macro_use]
+    mod keysets;
     mod lookup;
 }
 

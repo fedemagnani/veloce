@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/fedemagnani/veloce"
 
 [workspace]
-members = ["codegen"]
+members = ["codegen", "cargo-codegen"]
 # plain `cargo` commands at the root keep building and testing veloce alone
 default-members = ["."]
 
@@ -59,3 +59,11 @@ required-features = ["swmr"]
 [[bench]]
 name = "main"
 required-features = ["bench"]
+
+# `codegen` modules hold probes for the codegen tool, compiled only when it passes `--cfg codegen`
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(codegen)"] }
+
+# what `cargo codegen` builds when given no `--features`: the default features plus perfect_hash
+[package.metadata.codegen]
+features = ["perfect-hash"]

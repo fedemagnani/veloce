@@ -47,6 +47,8 @@
 //!
 //! [ConstexprCore/perfect_hash]: https://github.com/ConstexprCore/perfect_hash
 
+#[cfg(codegen)]
+mod codegen;
 mod generator;
 mod map;
 #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]

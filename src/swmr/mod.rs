@@ -70,6 +70,8 @@
 
 #[cfg(feature = "async")]
 mod r#async;
+#[cfg(codegen)]
+mod codegen;
 mod polling;
 mod reader;
 mod register;

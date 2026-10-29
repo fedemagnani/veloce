@@ -89,6 +89,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
+name = "cargo-codegen"
+version = "0.0.0"
+dependencies = [
+ "rustc-demangle",
+ "serde_json",
+ "similar",
+]
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -165,11 +174,6 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "codegen"
 version = "0.0.0"
-dependencies = [
- "rustc-demangle",
- "similar",
- "veloce",
-]
 
 [[package]]
 name = "criterion"

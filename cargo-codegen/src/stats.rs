@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::emit;
+use crate::emit::{self, Package};
 use crate::isa::classify;
 use crate::listing::{Listing, Probe};
 use crate::normalize::{Instruction, Line, normalize};
@@ -28,9 +28,9 @@ pub const COLUMNS: [&str; 10] = [
 ];
 
 /// Prints a table of every probe's stats per target, the host when none is given
-pub fn run(triples: &[String]) -> Result<(), String> {
+pub fn run(package: &Package, triples: &[String]) -> Result<(), String> {
     for target in emit::targets(triples)? {
-        let text = emit::assembly(&target)?;
+        let text = package.assembly(&target)?;
         let listing = Listing::parse(&text, &target);
         let probes = listing.probes()?;
         let rows = rows(&probes, &target);

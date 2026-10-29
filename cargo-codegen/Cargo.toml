@@ -1,0 +1,15 @@
+[package]
+name = "cargo-codegen"
+version = "0.0.0"
+edition = "2024"
+description = "Cargo subcommand for assembly-aware analysis: listings, instruction stats and baselines of a crate's probes"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+# reads the package, its targets and `[package.metadata.codegen]` from `cargo metadata`
+serde_json = "1.0.150"
+# demangles symbols in normalized listings, the demangler rustc itself uses
+rustc-demangle = "0.1.28"
+# unified diffs of listings drifted from a baseline in `diff`
+similar = "3.2.1"

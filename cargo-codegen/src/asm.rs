@@ -3,18 +3,18 @@
 use std::fs;
 use std::path::Path;
 
-use crate::emit;
+use crate::emit::{self, Package};
 use crate::listing::{Listing, Probe};
 use crate::normalize::{Line, normalize};
 use crate::target::Target;
 
-/// Writes `target/codegen/<target>/<probe>.s` for every target, the host when none is given
-pub fn run(triples: &[String], raw: bool) -> Result<(), String> {
+/// Writes `target/codegen/<package>/<target>/<probe>.s` for every target, the host when none is given
+pub fn run(package: &Package, triples: &[String], raw: bool) -> Result<(), String> {
     for target in emit::targets(triples)? {
-        let text = emit::assembly(&target)?;
+        let text = package.assembly(&target)?;
         let listing = Listing::parse(&text, &target);
         let probes = listing.probes()?;
-        let out_dir = emit::output_dir(&target);
+        let out_dir = package.output_dir(&target);
         write_probes(&probes, &target, raw, &out_dir)?;
     }
     Ok(())

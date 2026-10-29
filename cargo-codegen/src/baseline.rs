@@ -1,4 +1,4 @@
-//! `save` and `diff`: named baselines of normalized listings and stats under `target/codegen/baselines/`
+//! `save` and `diff`: named baselines of normalized listings and stats under `target/codegen/<package>/baselines/`
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use similar::TextDiff;
 
 use crate::asm::listing_text;
-use crate::emit;
+use crate::emit::{self, Package};
 use crate::listing::Listing;
 use crate::stats::{self, COLUMNS};
 use crate::target::Target;
@@ -22,10 +22,10 @@ const TOOLCHAIN_FILE: &str = "toolchain";
 const CONTEXT: usize = 3;
 
 /// Saves fresh builds as `baseline`, for the given targets, else those it already holds, else the host
-pub fn save(triples: &[String], baseline: &str) -> Result<(), String> {
-    for target in baseline_targets(triples, baseline, Fallback::Host)? {
-        let snapshot = Snapshot::build(&target)?;
-        let dir = baseline_dir(baseline).join(&target.triple);
+pub fn save(package: &Package, triples: &[String], baseline: &str) -> Result<(), String> {
+    for target in baseline_targets(package, triples, baseline, Fallback::Host)? {
+        let snapshot = Snapshot::build(package, &target)?;
+        let dir = baseline_dir(package, baseline).join(&target.triple);
         snapshot.write(&dir)?;
         let count = snapshot.listings.len();
         println!(
@@ -37,12 +37,12 @@ pub fn save(triples: &[String], baseline: &str) -> Result<(), String> {
 }
 
 /// Compares fresh builds to `baseline`, failing when a probe was added, removed or changed
-pub fn diff(triples: &[String], baseline: &str) -> Result<(), String> {
+pub fn diff(package: &Package, triples: &[String], baseline: &str) -> Result<(), String> {
     let mut drifted = Vec::new();
-    for target in baseline_targets(triples, baseline, Fallback::Error)? {
-        let dir = baseline_dir(baseline).join(&target.triple);
+    for target in baseline_targets(package, triples, baseline, Fallback::Error)? {
+        let dir = baseline_dir(package, baseline).join(&target.triple);
         let old = Snapshot::read(&dir, &target.triple, baseline)?;
-        let new = Snapshot::build(&target)?;
+        let new = Snapshot::build(package, &target)?;
         let drift = Drift::between(&old, &new);
         print!("{}", drift.report(&target.triple, baseline, &old, &new));
         if !drift.is_empty() {
@@ -64,6 +64,7 @@ enum Fallback {
 
 /// The given targets, else every target `baseline` holds
 fn baseline_targets(
+    package: &Package,
     triples: &[String],
     baseline: &str,
     fallback: Fallback,
@@ -71,21 +72,21 @@ fn baseline_targets(
     if !triples.is_empty() {
         return emit::targets(triples);
     }
-    let saved = saved_triples(baseline);
+    let saved = saved_triples(package, baseline);
     if !saved.is_empty() {
         return emit::targets(&saved);
     }
     match fallback {
         Fallback::Host => emit::targets(&[]),
         Fallback::Error => Err(format!(
-            "no baseline `{baseline}`: run `cargo run -p codegen -- save --baseline {baseline}` first"
+            "no baseline `{baseline}`: save one first with `save --baseline {baseline}`"
         )),
     }
 }
 
 /// Triples with a directory in `baseline`, sorted
-fn saved_triples(baseline: &str) -> Vec<String> {
-    let Ok(entries) = fs::read_dir(baseline_dir(baseline)) else {
+fn saved_triples(package: &Package, baseline: &str) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(baseline_dir(package, baseline)) else {
         return Vec::new();
     };
     let mut triples: Vec<String> = entries
@@ -97,9 +98,9 @@ fn saved_triples(baseline: &str) -> Vec<String> {
     triples
 }
 
-/// `target/codegen/baselines/<baseline>`, local to the checkout as criterion's baselines are
-fn baseline_dir(baseline: &str) -> PathBuf {
-    emit::codegen_dir().join("baselines").join(baseline)
+/// `target/codegen/<package>/baselines/<baseline>`, local to the checkout as criterion's baselines are
+fn baseline_dir(package: &Package, baseline: &str) -> PathBuf {
+    package.codegen_dir().join("baselines").join(baseline)
 }
 
 /// Normalized listings, stats and compiler of one target
@@ -113,8 +114,8 @@ struct Snapshot {
 
 impl Snapshot {
     /// The probes of a fresh build for `target`
-    fn build(target: &Target) -> Result<Self, String> {
-        let text = emit::assembly(target)?;
+    fn build(package: &Package, target: &Target) -> Result<Self, String> {
+        let text = package.assembly(target)?;
         let listing = Listing::parse(&text, target);
         let probes = listing.probes()?;
         let rows = stats::rows(&probes, target);

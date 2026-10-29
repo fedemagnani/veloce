@@ -2,14 +2,8 @@
 name = "codegen"
 version = "0.0.0"
 edition = "2024"
-description = "Assembly-aware analysis of veloce's hot paths"
+description = "Probes for assembly-aware analysis: never-inlined wrappers of a crate's API, compiled as its users compile them"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-# defaults plus `perfect-hash`, the feature set of `cargo bench --features bench`, so probes see the code the benches measure
-veloce = { path = "..", features = ["perfect-hash"] }
-# demangles symbols in normalized listings, the demangler rustc itself uses
-rustc-demangle = "0.1.28"
-# unified diffs of listings drifted from a baseline in `diff`
-similar = "3.2.1"
