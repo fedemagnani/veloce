@@ -9,6 +9,7 @@ mod host;
 mod isa;
 mod listing;
 mod normalize;
+mod registry;
 mod stats;
 mod target;
 
@@ -25,7 +26,6 @@ commands:
   diff [--baseline <name>]   compare fresh builds to a baseline, exiting 1 when a probe was added, removed or changed
 build options, each defaulting to [package.metadata.codegen] of the package:
   -p, --package <name>       package holding the probes, else the one containing the current directory
-  --probes <list>            probe macros to expand, replacing the metadata's `probes`
   --features <list>          features to build with, replacing the metadata's `features`
   --no-default-features      build without the package's default features
   --feature <name>           feature enabling the probes, else the metadata's `feature`, else `codegen`
@@ -112,7 +112,6 @@ impl Options {
             match arg.as_str() {
                 "--target" => options.targets.push(value()?),
                 "-p" | "--package" => options.request.package = Some(value()?),
-                "--probes" => options.request.probes = Some(list(&value()?)),
                 "--features" => options.add_features(&value()?),
                 "--no-default-features" => options.request.no_default_features = true,
                 "--feature" => options.request.feature = Some(value()?),

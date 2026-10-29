@@ -1,0 +1,10 @@
+[package]
+name = "codegen-macros"
+version = "0.0.0"
+edition = "2024"
+description = "The `#[codegen::probe]` attribute, re-exported by the codegen crate"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+proc-macro = true

@@ -2,12 +2,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::SystemTime;
 
 use serde_json::Value;
 
 use crate::host;
+use crate::registry;
 use crate::target::Target;
 
 /// Feature enabling the probes when neither the command line nor the metadata names one
@@ -20,7 +21,6 @@ const NON_LIBRARY_KINDS: [&str; 5] = ["bin", "example", "test", "bench", "custom
 #[derive(Default)]
 pub struct Request {
     pub package: Option<String>,
-    pub probes: Option<Vec<String>>,
     pub features: Option<Vec<String>>,
     pub no_default_features: bool,
     pub feature: Option<String>,
@@ -29,11 +29,12 @@ pub struct Request {
 /// A package's probes, resolved against `cargo metadata`
 pub struct Package {
     pub name: String,
+    /// The package's manifest, telling its build apart in cargo's messages
+    manifest: PathBuf,
     /// Directory of the package's manifest, the host crate's path dependency
     dir: PathBuf,
     /// Crate name of the package's library, where its probe macros are exported
     library: String,
-    probes: Vec<String>,
     /// Features the package is built with, the probe feature included
     features: Vec<String>,
     default_features: bool,
@@ -60,15 +61,14 @@ impl Package {
             .to_path_buf();
         let library = library_name(package, &name)?;
         let defaults = &package["metadata"]["codegen"];
-        let probes = probes(request, defaults, &name)?;
         let features = features(request, defaults);
         let default_features =
             !(request.no_default_features || defaults["no-default-features"] == Value::Bool(true));
         Ok(Self {
             name,
+            manifest,
             dir,
             library,
-            probes,
             features,
             default_features,
             workspace_root,
@@ -92,23 +92,26 @@ impl Package {
         self.codegen_dir().join(&target.triple)
     }
 
-    /// Writes the host crate, builds it for `triple` with `--emit asm` and returns the emitted file
+    /// Builds the package, reads its probe registry, then builds the host expanding them with `--emit asm`
     fn emit(&self, triple: &str) -> Result<PathBuf, String> {
-        let host_dir = self.write_host()?;
-        // the cargo running this tool, so the toolchain stays the same
-        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-        let mut command = Command::new(&cargo);
-        // inside the probed workspace's target dir, so its `.cargo/config.toml` and toolchain file still apply
-        command.current_dir(&host_dir);
-        // the probed workspace's target dir, so its dependencies' builds are reused
-        command.env("CARGO_TARGET_DIR", &self.target_dir);
+        let host_dir = self.write_host(&[])?;
+        let rlib = self.build_package(&host_dir, triple)?;
+        let probes = registry::read(&rlib)?;
+        if probes.is_empty() {
+            return Err(format!(
+                "package {} registers no probes: define them with `#[codegen::probe]` or `codegen::probes!`",
+                self.name
+            ));
+        }
+        self.write_host(&probes)?;
+        let mut command = self.cargo(&host_dir);
         // `release`, which `bench` inherits: `--profile bench` would build a bench harness needing a linker
         let args = ["rustc", "--quiet", "--lib", "--release", "--target", triple];
         command.args(args);
         // only the host crate is emitted, its dependencies build as usual
         command.args(["--", "--emit", "asm"]);
         let status = command.status();
-        let status = status.map_err(|error| format!("running {cargo}: {error}"))?;
+        let status = status.map_err(|error| format!("running cargo: {error}"))?;
         if !status.success() {
             return Err(format!(
                 "building the probes of {} for {triple} failed",
@@ -121,8 +124,41 @@ impl Package {
             .ok_or_else(|| format!("no {crate_name}-*.s under {}", release_dir.display()))
     }
 
+    /// Builds the host expanding no probes, returning the rlib of the package it depends on
+    fn build_package(&self, host_dir: &Path, triple: &str) -> Result<PathBuf, String> {
+        let mut command = self.cargo(host_dir);
+        let args = ["build", "--quiet", "--lib", "--release", "--target", triple];
+        // diagnostics still printed, artifacts reported as JSON on standard output
+        command
+            .args(args)
+            .arg("--message-format=json-render-diagnostics");
+        // the rendered diagnostics go to standard error, which `output` would otherwise swallow
+        command.stderr(Stdio::inherit());
+        let output = command.output();
+        let output = output.map_err(|error| format!("running cargo: {error}"))?;
+        if !output.status.success() {
+            return Err(format!("building {} for {triple} failed", self.name));
+        }
+        let messages = String::from_utf8_lossy(&output.stdout);
+        let manifest = self.manifest.to_string_lossy();
+        rlib_artifact(&messages, &manifest)
+            .ok_or_else(|| format!("cargo reported no rlib of {} for {triple}", self.name))
+    }
+
+    /// Cargo, run in the host crate's directory with the probed workspace's target dir
+    fn cargo(&self, host_dir: &Path) -> Command {
+        // the cargo running this tool, so the toolchain stays the same
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let mut command = Command::new(cargo);
+        // inside the probed workspace's target dir, so its `.cargo/config.toml` and toolchain file still apply
+        command.current_dir(host_dir);
+        // the probed workspace's target dir, so its dependencies' builds are reused
+        command.env("CARGO_TARGET_DIR", &self.target_dir);
+        command
+    }
+
     /// Writes the host crate under `target/codegen/<package>/host`, its lock file seeded from the workspace's
-    fn write_host(&self) -> Result<PathBuf, String> {
+    fn write_host(&self, probes: &[String]) -> Result<PathBuf, String> {
         let host_dir = self.codegen_dir().join("host");
         fs::create_dir_all(&host_dir)
             .map_err(|error| format!("creating {}: {error}", host_dir.display()))?;
@@ -133,7 +169,7 @@ impl Package {
             library: &self.library,
             features: &self.features,
             default_features: self.default_features,
-            probes: &self.probes,
+            probes,
         };
         let manifest = host::manifest(&spec);
         let library = host::library(&spec);
@@ -223,20 +259,6 @@ fn library_name(package: &Value, name: &str) -> Result<String, String> {
     Ok(library_name.replace('-', "_"))
 }
 
-/// The command line's probe macros, else the metadata's `probes`, failing when there are none
-fn probes(request: &Request, defaults: &Value, name: &str) -> Result<Vec<String>, String> {
-    let probes = match &request.probes {
-        Some(probes) => probes.clone(),
-        None => string_list(&defaults["probes"]),
-    };
-    if probes.is_empty() {
-        return Err(format!(
-            "package {name} lists no probe macros: set `probes = [..]` in [package.metadata.codegen], or pass --probes"
-        ));
-    }
-    Ok(probes)
-}
-
 /// The command line's features, else the metadata's, plus the feature enabling the probes
 fn features(request: &Request, defaults: &Value) -> Vec<String> {
     let mut features = match &request.features {
@@ -259,6 +281,20 @@ fn library_target(package: &Value) -> Option<&Value> {
         let kinds = string_list(&target["kind"]);
         let is_library = |kind: &String| !NON_LIBRARY_KINDS.contains(&kind.as_str());
         !kinds.is_empty() && kinds.iter().all(is_library)
+    })
+}
+
+/// The rlib cargo built for the package of `manifest`, read from its JSON messages
+fn rlib_artifact(messages: &str, manifest: &str) -> Option<PathBuf> {
+    messages.lines().find_map(|line| {
+        let message: Value = serde_json::from_str(line).ok()?;
+        let is_artifact = message["reason"] == "compiler-artifact";
+        if !is_artifact || message["manifest_path"] != manifest {
+            return None;
+        }
+        let filenames = string_list(&message["filenames"]);
+        let rlib = filenames.into_iter().find(|file| file.ends_with(".rlib"))?;
+        Some(PathBuf::from(rlib))
     })
 }
 
@@ -371,22 +407,6 @@ mod test {
     }
 
     #[test]
-    fn probes_come_from_the_command_line_else_the_metadata() {
-        let defaults = serde_json::json!({ "probes": ["listed"] });
-        let given = Request {
-            probes: Some(vec!["given".to_string()]),
-            ..Request::default()
-        };
-        let none = Request::default();
-        let from_line = probes(&given, &defaults, "demo");
-        let from_metadata = probes(&none, &defaults, "demo");
-        let missing = probes(&none, &Value::Null, "demo");
-        assert_eq!(from_line, Ok(vec!["given".to_string()]));
-        assert_eq!(from_metadata, Ok(vec!["listed".to_string()]));
-        assert!(missing.unwrap_err().contains("lists no probe macros"));
-    }
-
-    #[test]
     fn the_probe_feature_is_always_enabled_once() {
         let defaults = serde_json::json!({ "features": ["fast", "codegen"] });
         let renamed = serde_json::json!({ "features": ["fast"], "feature": "probes" });
@@ -406,5 +426,19 @@ mod test {
         let missing = pick_package(&packages, Some("other"));
         assert_eq!(found, Ok(&Value::from("demo")));
         assert!(missing.unwrap_err().contains("no package other"));
+    }
+
+    #[test]
+    fn the_rlib_is_the_artifact_of_the_package_manifest() {
+        let messages = [
+            r#"{"reason":"compiler-artifact","manifest_path":"/dep/Cargo.toml","filenames":["/t/libdep.rlib"]}"#,
+            r#"{"reason":"compiler-artifact","manifest_path":"/work/demo/Cargo.toml","filenames":["/t/libdemo.rmeta","/t/libdemo.rlib"]}"#,
+            r#"{"reason":"build-finished","success":true}"#,
+        ]
+        .join("\n");
+        let rlib = rlib_artifact(&messages, "/work/demo/Cargo.toml");
+        let missing = rlib_artifact(&messages, "/other/Cargo.toml");
+        assert_eq!(rlib, Some(PathBuf::from("/t/libdemo.rlib")));
+        assert_eq!(missing, None);
     }
 }

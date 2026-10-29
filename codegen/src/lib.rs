@@ -1,8 +1,9 @@
 //! Probes for assembly-aware analysis, inspected with `cargo codegen`
 //!
 //! - a probe is a `#[unsafe(no_mangle)]`, `#[inline(never)]` wrapper of a crate's API, easy to find in the assembly
-//! - [`probes!`] defines them in the crate, but they compile only where a downstream crate expands them
+//! - [`probe`] and [`probes!`] define them in the crate, but they compile only where a downstream crate expands them
 //! - so they show what the crate's users get: the same cross-crate inlining, and the public API only
+//! - each definition registers itself in the compiled crate, where `cargo codegen` finds it
 //!
 //! ## Example
 //!
@@ -13,25 +14,35 @@
 //!     x.wrapping_mul(3)
 //! }
 //!
-//! codegen::probes!(demo_probes {
-//!     fn demo_tripled(x: u8) -> u8 {
-//!         $crate::tripled(x)
+//! #[codegen::probe]
+//! fn demo_tripled(x: u8) -> u8 {
+//!     crate::tripled(x)
+//! }
+//!
+//! // a block, sharing helper items between probes
+//! #[codegen::probe]
+//! mod demo {
+//!     type Byte = u8;
+//!
+//!     fn demo_sixfold(x: Byte) -> Byte {
+//!         crate::tripled(x).wrapping_mul(2)
 //!     }
-//! });
+//! }
 //! # fn main() {
-//! #     demo_probes!();
+//! #     __codegen_probe_demo_tripled!();
+//! #     __codegen_probe_demo!();
 //! #     assert_eq!(demo_tripled(2), 6);
+//! #     assert_eq!(demo_sixfold(2), 12);
 //! # }
 //! ```
 //!
-//! `cargo codegen` then builds a crate expanding `demo_probes!()`, listed in `[package.metadata.codegen]` as
-//! `probes = ["demo_probes"]`.
-//!
 //! ## Writing probes
 //!
-//! - reach the crate through `$crate::`, which resolves to it wherever the probes are expanded
+//! - reach the crate through `crate::` paths: the attribute makes them `$crate::`, resolving wherever probes expand
 //! - `fn` items become `pub` probes, `unsafe` and `extern` ones included; generic ones fail to compile
-//! - other items, such as statics or macro invocations, are expanded as written
+//! - other items of a `mod`, such as `use`, statics or macro invocations, are expanded as written
+//! - [`probes!`] is the same as a probe `mod`, for macros generating probes: write `$crate::` there
+//! - keep the dependency named `codegen`: the attribute expands to `::codegen::probes!`
 //!
 //! ```compile_fail
 //! codegen::probes!(generic_probes {
@@ -42,9 +53,11 @@
 //! generic_probes!();
 //! # fn main() {}
 //! ```
-//! - `#[cfg]` inside a block is evaluated in the expanding crate: gate the whole `probes!` invocation instead
+//! - `#[cfg]` inside a `mod` or block is evaluated in the expanding crate: gate the whole `mod` or `probes!` instead
 
-/// Defines the exported macro `$name!()`, expanding the probes in the crate that invokes it
+pub use codegen_macros::probe;
+
+/// Defines the exported macro `$name!()`, expanding the probes in the crate that invokes it, and registers it
 #[macro_export]
 macro_rules! probes {
     ($name:ident { $($body:tt)* }) => {
@@ -55,7 +68,29 @@ macro_rules! probes {
                 $crate::__probe_items! { $($body)* }
             };
         }
+
+        // `codegen-probes:<name>\n` in the object file, so `cargo codegen` finds the macro without being told
+        const _: () = {
+            const ENTRY: &str = ::core::concat!("codegen-probes:", ::core::stringify!($name), "\n");
+            #[used]
+            #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__DATA,codegen"))]
+            #[cfg_attr(not(target_vendor = "apple"), unsafe(link_section = "codegen"))]
+            static REGISTRY: [u8; ENTRY.len()] = $crate::__registry_entry(ENTRY);
+        };
     };
+}
+
+/// The bytes of a registry entry, as an array a `#[used]` static can hold in place
+#[doc(hidden)]
+pub const fn __registry_entry<const N: usize>(entry: &str) -> [u8; N] {
+    let bytes = entry.as_bytes();
+    let mut array = [0; N];
+    let mut i = 0;
+    while i < N {
+        array[i] = bytes[i];
+        i += 1;
+    }
+    array
 }
 
 /// Expands the items of a [`probes!`] block, marking each `fn` as a probe
@@ -101,6 +136,10 @@ macro_rules! __probe_items {
         $crate::__probe_items! { $($rest)* }
     };
 }
+
+// lets the attribute's `::codegen::probes!` resolve in this crate's own tests
+#[cfg(test)]
+extern crate self as codegen;
 
 #[cfg(test)]
 mod test {
@@ -187,5 +226,49 @@ mod test {
         assert_eq!(read, 10);
         assert_eq!(external, 4);
         assert_eq!(read_external, 14);
+    }
+
+    pub fn doubled(x: u64) -> u64 {
+        x * 2
+    }
+
+    #[crate::probe]
+    fn codegen_test_attribute_fn(x: u64) -> u64 {
+        crate::test::doubled(x)
+    }
+
+    #[crate::probe]
+    mod attribute_block {
+        // `pub(crate)` stays as written, only `crate::` paths become `$crate::`
+        pub(crate) use crate::test::doubled;
+
+        const TWO: u64 = 2;
+
+        fn codegen_test_attribute_mod(x: u64) -> u64 {
+            doubled(x) + TWO
+        }
+    }
+
+    __codegen_probe_codegen_test_attribute_fn!();
+
+    mod attribute_block_expanded {
+        __codegen_probe_attribute_block!();
+    }
+
+    #[test]
+    fn attribute_probes_reach_the_crate_through_rewritten_paths() {
+        let from_fn = codegen_test_attribute_fn(4);
+        let from_mod = attribute_block_expanded::codegen_test_attribute_mod(4);
+        assert_eq!(from_fn, 8);
+        assert_eq!(from_mod, 10);
+    }
+
+    #[test]
+    fn attribute_probes_are_exported_unmangled() {
+        unsafe extern "Rust" {
+            safe fn codegen_test_attribute_mod(x: u64) -> u64;
+        }
+        let through_symbol = codegen_test_attribute_mod(1);
+        assert_eq!(through_symbol, 4);
     }
 }

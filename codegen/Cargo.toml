@@ -7,3 +7,5 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
+# `#[codegen::probe]`, re-exported as `probe`
+codegen-macros = { path = "../codegen-macros" }

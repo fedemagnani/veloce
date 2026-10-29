@@ -1,7 +1,8 @@
 //! Probes of the spsc hot paths for `cargo codegen`, at the payload and capacity of the throughput benches
 
-::codegen::probes!(spsc_probes {
-    use $crate::spsc::{TryRecvError, TrySendErr, lamport, vyukov};
+#[codegen::probe]
+mod spsc {
+    use crate::spsc::{TryRecvError, TrySendErr, lamport, vyukov};
 
     /// Payload of the throughput benches
     type Item = i32;
@@ -70,4 +71,4 @@
     fn spsc_vyukov_drain_sum(receiver: &mut vyukov::Receiver<Item, CAPACITY>, max: usize) -> Item {
         receiver.drain(max).fold(0, Item::wrapping_add)
     }
-});
+}

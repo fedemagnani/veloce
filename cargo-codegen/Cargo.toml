@@ -13,3 +13,5 @@ serde_json = "1.0.150"
 rustc-demangle = "0.1.28"
 # unified diffs of listings drifted from a baseline in `diff`
 similar = "3.2.1"
+# reads the probe registry from the object files of the probed crate's rlib
+object = { version = "0.40.0", default-features = false, features = ["read_core", "archive", "elf", "macho", "coff", "std"] }
