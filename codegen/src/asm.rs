@@ -49,7 +49,7 @@ fn write_probes(
 }
 
 /// The probe's body as emitted, or normalized
-fn listing_text(probe: &Probe<'_>, target: &Target, raw: bool) -> String {
+pub fn listing_text(probe: &Probe<'_>, target: &Target, raw: bool) -> String {
     let lines: Vec<String> = if raw {
         probe.body.iter().map(|line| line.to_string()).collect()
     } else {

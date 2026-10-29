@@ -29,18 +29,34 @@ pub fn assembly(target: &Target) -> Result<String, String> {
 
 /// Directory `asm` writes the listings of `target` to
 pub fn output_dir(target: &Target) -> PathBuf {
+    codegen_dir().join(&target.triple)
+}
+
+/// `target/codegen`, where every command writes
+pub fn codegen_dir() -> PathBuf {
     let root = workspace_root();
-    target_dir(&root).join("codegen").join(&target.triple)
+    target_dir(&root).join("codegen")
+}
+
+/// `rustc -V` of the active toolchain, the compiler `assembly` builds with
+pub fn rustc_version() -> Result<String, String> {
+    let version = rustc("-V")?;
+    Ok(version.trim().to_string())
 }
 
 /// Host triple of the active toolchain
 fn host_triple() -> Result<String, String> {
-    let output = Command::new("rustc").arg("-vV").output();
-    let output = output.map_err(|error| format!("running rustc -vV: {error}"))?;
-    let version = String::from_utf8_lossy(&output.stdout);
+    let version = rustc("-vV")?;
     let host = version.lines().find_map(|line| line.strip_prefix("host: "));
     host.map(str::to_string)
         .ok_or_else(|| "rustc -vV printed no host".to_string())
+}
+
+/// Standard output of `rustc <flag>`
+fn rustc(flag: &str) -> Result<String, String> {
+    let output = Command::new("rustc").arg(flag).output();
+    let output = output.map_err(|error| format!("running rustc {flag}: {error}"))?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Workspace root, the parent of this crate

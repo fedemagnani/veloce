@@ -11,3 +11,5 @@ publish = false
 veloce = { path = "..", features = ["perfect-hash"] }
 # demangles symbols in normalized listings, the demangler rustc itself uses
 rustc-demangle = "0.1.28"
+# unified diffs of listings drifted from a baseline in `diff`
+similar = "3.2.1"

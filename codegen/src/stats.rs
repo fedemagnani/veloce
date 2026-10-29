@@ -23,7 +23,7 @@ const PANIC_PATHS: [&str; 10] = [
 ];
 
 /// Column headers of the table, after the probe name
-const COLUMNS: [&str; 10] = [
+pub const COLUMNS: [&str; 10] = [
     "instr", "branch", "jump", "select", "load", "store", "simd", "barrier", "call", "panic",
 ];
 
@@ -32,18 +32,25 @@ pub fn run(triples: &[String]) -> Result<(), String> {
     for target in emit::targets(triples)? {
         let text = emit::assembly(&target)?;
         let listing = Listing::parse(&text, &target);
-        let mut probes = listing.probes()?;
-        probes.sort_by_key(|probe| probe.name);
-        let rows: Vec<(&Probe<'_>, Stats)> = probes
-            .iter()
-            .map(|probe| {
-                let lines = normalize(&probe.body, &target);
-                (probe, Stats::of(&lines, target.arch))
-            })
-            .collect();
-        print_report(&target, &rows);
+        let probes = listing.probes()?;
+        let rows = rows(&probes, &target);
+        println!("== {}", target.triple);
+        print!("{}", table(&rows));
     }
     Ok(())
+}
+
+/// Stats of every probe, sorted by name
+pub fn rows<'p, 'a>(probes: &'p [Probe<'a>], target: &Target) -> Vec<(&'p Probe<'a>, Stats)> {
+    let mut rows: Vec<(&Probe<'a>, Stats)> = probes
+        .iter()
+        .map(|probe| {
+            let lines = normalize(&probe.body, target);
+            (probe, Stats::of(&lines, target.arch))
+        })
+        .collect();
+    rows.sort_by_key(|(probe, _)| probe.name);
+    rows
 }
 
 /// Counts over one normalized body
@@ -60,7 +67,7 @@ pub struct Stats {
     pub calls: usize,
     /// Calls straight into a panic function
     pub panic_calls: usize,
-    /// Count per ordering mnemonic, as `codegen.sh` reported them
+    /// Count per ordering mnemonic, such as `ldar` or `xchgq`
     pub barrier_kinds: BTreeMap<String, usize>,
     /// Global symbols referenced, panic functions excluded
     pub symbols: BTreeSet<String>,
@@ -109,7 +116,7 @@ impl Stats {
     }
 
     /// The table cells, in `COLUMNS` order
-    fn cells(&self) -> [usize; 10] {
+    pub fn cells(&self) -> [usize; 10] {
         [
             self.instructions,
             self.cond_branches,
@@ -153,26 +160,25 @@ fn is_panic(symbol: &str) -> bool {
 }
 
 /// The table, then one line of details per probe that has any
-fn print_report(target: &Target, rows: &[(&Probe<'_>, Stats)]) {
+pub fn table(rows: &[(&Probe<'_>, Stats)]) -> String {
     let name_width = rows
         .iter()
         .map(|(probe, _)| probe.name.len())
         .max()
         .unwrap_or(0);
     let name_width = name_width.max("probe".len());
-    println!("== {}", target.triple);
     let header: Vec<String> = COLUMNS
         .iter()
         .map(|column| format!("{column:>8}"))
         .collect();
-    println!("{:<name_width$} {}", "probe", header.join(""));
+    let mut out = format!("{:<name_width$} {}\n", "probe", header.join(""));
     for (probe, stats) in rows {
         let cells: Vec<String> = stats
             .cells()
             .iter()
             .map(|cell| format!("{cell:>8}"))
             .collect();
-        println!("{:<name_width$} {}", probe.name, cells.join(""));
+        out += &format!("{:<name_width$} {}\n", probe.name, cells.join(""));
     }
     for (probe, stats) in rows {
         let mut details = stats.details();
@@ -180,9 +186,27 @@ fn print_report(target: &Target, rows: &[(&Probe<'_>, Stats)]) {
             details.insert(0, format!("merged into {other}"));
         }
         if !details.is_empty() {
-            println!("{}: {}", probe.name, details.join(" | "));
+            out += &format!("{}: {}\n", probe.name, details.join(" | "));
         }
     }
+    out
+}
+
+/// Cells of every probe row of a table written by [`table`], details lines skipped
+pub fn parse_table(text: &str) -> BTreeMap<String, [usize; 10]> {
+    let mut rows = BTreeMap::new();
+    for line in text.lines().skip(1) {
+        let mut words = line.split_whitespace();
+        let Some(name) = words.next() else {
+            continue;
+        };
+        let numbers: Option<Vec<usize>> = words.map(|word| word.parse().ok()).collect();
+        let cells = numbers.and_then(|numbers| <[usize; 10]>::try_from(numbers).ok());
+        if let Some(cells) = cells {
+            rows.insert(name.to_string(), cells);
+        }
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -215,6 +239,32 @@ LBB0_2:
         assert_eq!(symbols, ["memcpy"]);
         assert_eq!(panics, ["core::panicking::panic_bounds_check"]);
         assert_eq!(stats.barrier_kinds.get("ldar"), Some(&1));
+    }
+
+    #[test]
+    fn parse_table_reads_back_the_rendered_cells() {
+        let target = Target::parse("aarch64-apple-darwin").unwrap();
+        let text = "\t.globl\t_probe_a
+_probe_a:
+\tldar\tx8, [x0]
+\tbl\t_memcpy
+\t.cfi_endproc
+\t.globl\t_probe_b
+_probe_b = _probe_a";
+        let listing = Listing::parse(text, &target);
+        let probes = listing.probes().unwrap();
+        let rows = rows(&probes, &target);
+        let rendered = table(&rows);
+        let parsed = parse_table(&rendered);
+        let expected: BTreeMap<String, [usize; 10]> = rows
+            .iter()
+            .map(|(probe, stats)| (probe.name.to_string(), stats.cells()))
+            .collect();
+        assert_eq!(parsed, expected);
+        assert!(
+            rendered.contains("probe_b: merged into probe_a"),
+            "{rendered}"
+        );
     }
 
     #[test]
