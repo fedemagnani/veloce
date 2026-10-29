@@ -47,7 +47,7 @@
 //!
 //! [ConstexprCore/perfect_hash]: https://github.com/ConstexprCore/perfect_hash
 
-#[cfg(codegen)]
+#[cfg(feature = "codegen")]
 mod codegen;
 mod generator;
 mod map;

@@ -10,7 +10,7 @@
 //! - [`lamport`] — Classic approach with shared atomic head/tail indices. It is extremely cheap to create
 //! - [`vyukov`] — Per-slot sequence stamps for reduced cache contention
 
-#[cfg(codegen)]
+#[cfg(feature = "codegen")]
 mod codegen;
 pub mod lamport;
 pub mod vyukov;

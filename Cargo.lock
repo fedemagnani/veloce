@@ -1048,6 +1048,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "arc-swap",
+ "codegen",
  "criterion",
  "crossbeam-channel",
  "crossbeam-utils",

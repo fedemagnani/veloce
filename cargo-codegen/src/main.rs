@@ -1,6 +1,6 @@
 //! Command line of `cargo codegen <command> [options]`, run inside the workspace of the probed package
 //!
-//! A probe is any `#[unsafe(no_mangle)]` function of the probed target, found by symbol in its emitted assembly.
+//! A probe is any `#[unsafe(no_mangle)]` function of the generated host crate, found by symbol in its emitted assembly.
 
 mod asm;
 mod baseline;

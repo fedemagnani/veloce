@@ -1,42 +1,36 @@
-//! Probes of the swmr hot paths for the codegen tool, compiled only under `--cfg codegen`
+//! Probes of the swmr hot paths for `cargo codegen`, expanded in a downstream crate it generates
 
+::codegen::probes!(swmr_probes {
+    use $crate::swmr::{Reader, SwmrError, Writer};
+
+    /// Word-sized payload
+    type P8 = u64;
+    /// Page-sized payload, where copies dominate
+    type P4K = [u64; 512];
+
+    fn swmr_publish_p8(writer: &mut Writer<P8>, value: P8) -> Result<(), SwmrError> {
+        writer.publish(value)
+    }
+
+    fn swmr_publish_p4k(writer: &mut Writer<P4K>, value: P4K) -> Result<(), SwmrError> {
+        writer.publish(value)
+    }
+
+    fn swmr_latest_p8(reader: &mut Reader<P8>) -> P8 {
+        *reader.latest()
+    }
+});
+
+// gated here, as a `#[cfg]` inside a probe block would be evaluated in the downstream crate
 #[cfg(feature = "async")]
-use super::{AsyncReader, AsyncWriter};
-use super::{Reader, SwmrError, Writer};
+::codegen::probes!(swmr_async_probes {
+    use $crate::swmr::{AsyncReader, AsyncWriter, SwmrError};
 
-/// Word-sized payload
-pub type P8 = u64;
-/// Page-sized payload, where copies dominate
-pub type P4K = [u64; 512];
+    fn swmr_publish_async_p8(writer: &mut AsyncWriter<u64>, value: u64) -> Result<(), SwmrError> {
+        writer.publish(value)
+    }
 
-#[unsafe(no_mangle)]
-#[inline(never)]
-pub fn swmr_publish_p8(writer: &mut Writer<P8>, value: P8) -> Result<(), SwmrError> {
-    writer.publish(value)
-}
-
-#[unsafe(no_mangle)]
-#[inline(never)]
-pub fn swmr_publish_p4k(writer: &mut Writer<P4K>, value: P4K) -> Result<(), SwmrError> {
-    writer.publish(value)
-}
-
-#[unsafe(no_mangle)]
-#[inline(never)]
-pub fn swmr_latest_p8(reader: &mut Reader<P8>) -> P8 {
-    *reader.latest()
-}
-
-#[cfg(feature = "async")]
-#[unsafe(no_mangle)]
-#[inline(never)]
-pub fn swmr_publish_async_p8(writer: &mut AsyncWriter<P8>, value: P8) -> Result<(), SwmrError> {
-    writer.publish(value)
-}
-
-#[cfg(feature = "async")]
-#[unsafe(no_mangle)]
-#[inline(never)]
-pub fn swmr_latest_async_p8(reader: &mut AsyncReader<P8>) -> P8 {
-    *reader.latest()
-}
+    fn swmr_latest_async_p8(reader: &mut AsyncReader<u64>) -> u64 {
+        *reader.latest()
+    }
+});

@@ -8,14 +8,17 @@ use test::Bencher;
 
 use super::common::{Mix, index_hashbrown, index_map, run};
 
-/// A module of benches for a key set, each key mapped to its declaration index, `extra` sets only under `bench-full`
+/// A module of benches per key set, each key mapped to its declaration index, `extra` sets only under `bench-full`
 macro_rules! keyset {
-    (core $($set:tt)*) => {
-        keyset!(@module $($set)*);
+    () => {};
+    (core $name:ident $hits:tt misses $misses:tt $($rest:tt)*) => {
+        keyset!(@module $name $hits misses $misses);
+        keyset!($($rest)*);
     };
-    (extra $($set:tt)*) => {
+    (extra $name:ident $hits:tt misses $misses:tt $($rest:tt)*) => {
         #[cfg(feature = "bench-full")]
-        keyset!(@module $($set)*);
+        keyset!(@module $name $hits misses $misses);
+        keyset!($($rest)*);
     };
     (@module $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses [$($miss:literal),+ $(,)?]) => {
         mod $name {

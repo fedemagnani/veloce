@@ -29,11 +29,14 @@ async = ["dep:futures"]
 bench = ["spsc", "swmr", "perfect-hash"]
 # `bench` plus the perfect_hash key sets whose lookup path another set already covers
 bench-full = ["bench"]
+# probes of the hot paths for `cargo codegen`, which expands them in a downstream crate it generates
+codegen = ["dep:codegen"]
 
 [dependencies]
 crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
 paste = { version = "1.0.15", optional = true }
+codegen = { path = "codegen", optional = true }
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -60,10 +63,7 @@ required-features = ["swmr"]
 name = "main"
 required-features = ["bench"]
 
-# `codegen` modules hold probes for the codegen tool, compiled only when it passes `--cfg codegen`
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(codegen)"] }
-
-# what `cargo codegen` builds when given no `--features`: the default features plus perfect_hash
+# what `cargo codegen` builds: the default features, perfect_hash and `codegen`, expanding these probe macros
 [package.metadata.codegen]
 features = ["perfect-hash"]
+probes = ["swmr_probes", "swmr_async_probes", "spsc_probes", "perfect_hash_probes"]

@@ -1,19 +1,17 @@
 // Upstream's key sets, shared by the perfect_hash benches and codegen probes so the two can't drift apart: no `//!`, as it's include!d
 
-/// Calls `callback! { core|extra <name> { <key> => <index>, .. } misses [..] }` per set, `extra` repeating a covered path
+/// Calls `callback!` once with every set as `core|extra <name> { <key> => <index>, .. } misses [..]`, `extra` repeating a covered path
 macro_rules! keysets {
     ($callback:ident) => {
-        // URL protocols: 6 keys, up to 5 bytes
         $callback! {
+            // URL protocols: 6 keys, up to 5 bytes
             core protocol {
                 "http" => 0, "https" => 1, "ftp" => 2, "ws" => 3, "wss" => 4, "file" => 5,
             }
             misses [
                 "ssh", "telnet", "mailto", "data", "blob", "urn",
             ]
-        }
-        // S&P 100 tickers: 100 keys, up to 5 bytes
-        $callback! {
+            // S&P 100 tickers: 100 keys, up to 5 bytes
             core stock {
                 "AAPL" => 0, "ABBV" => 1, "ABT" => 2, "ACN" => 3, "ADBE" => 4, "AIG" => 5, "AMD" => 6,
                 "AMGN" => 7, "AMT" => 8, "AMZN" => 9, "AVGO" => 10, "AXP" => 11, "BA" => 12, "BAC" => 13,
@@ -35,9 +33,7 @@ macro_rules! keysets {
                 "RIVN", "PLTR", "SNAP", "UBER", "LYFT", "COIN", "HOOD", "DKNG", "SOFI", "RBLX", "ROKU",
                 "ZM", "ABNB", "DASH", "CRWD", "NET", "SNOW", "DDOG", "MDB", "PATH",
             ]
-        }
-        // C++ keywords: 15 keys, up to 6 bytes
-        $callback! {
+            // C++ keywords: 15 keys, up to 6 bytes
             extra keyword {
                 "auto" => 0, "bool" => 1, "break" => 2, "case" => 3, "char" => 4, "class" => 5,
                 "const" => 6, "do" => 7, "double" => 8, "else" => 9, "enum" => 10, "float" => 11,
@@ -47,9 +43,7 @@ macro_rules! keysets {
                 "int", "void", "return", "while", "switch", "struct", "static", "extern", "inline",
                 "virtual", "public", "private", "throw", "try", "catch",
             ]
-        }
-        // HTTP headers: 20 keys, up to 15 bytes
-        $callback! {
+            // HTTP headers: 20 keys, up to 15 bytes
             core header {
                 "Accept" => 0, "Accept-Encoding" => 1, "Authorization" => 2, "Cache-Control" => 3,
                 "Connection" => 4, "Content-Length" => 5, "Content-Type" => 6, "Cookie" => 7, "Date" => 8,
@@ -62,9 +56,7 @@ macro_rules! keysets {
                 "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "Pragma",
                 "Warning",
             ]
-        }
-        // MIME types: 15 keys, up to 16 bytes
-        $callback! {
+            // MIME types: 15 keys, up to 16 bytes
             extra mime {
                 "text/html" => 0, "text/plain" => 1, "text/css" => 2, "application/json" => 3,
                 "application/xml" => 4, "application/pdf" => 5, "application/zip" => 6, "image/png" => 7,
@@ -75,9 +67,7 @@ macro_rules! keysets {
                 "text/xml", "text/csv", "application/gzip", "application/wasm", "image/avif", "image/tiff",
                 "audio/ogg", "video/webm", "font/otf", "application/x-www-form-urlencoded",
             ]
-        }
-        // Letters a-z: 26 single-byte keys
-        $callback! {
+            // Letters a-z: 26 single-byte keys
             core letters {
                 "a" => 0, "b" => 1, "c" => 2, "d" => 3, "e" => 4, "f" => 5, "g" => 6, "h" => 7, "i" => 8,
                 "j" => 9, "k" => 10, "l" => 11, "m" => 12, "n" => 13, "o" => 14, "p" => 15, "q" => 16,
@@ -88,9 +78,7 @@ macro_rules! keysets {
                 "A", "B", "1", "!", "aa", "zz", "0", "ab", "yz", "mn", "?", "@", "+", "-", "_", ".", "/",
                 "~", "*", "$",
             ]
-        }
-        // HTTP headers: 50 keys, up to 19 bytes
-        $callback! {
+            // HTTP headers: 50 keys, up to 19 bytes
             extra headers50 {
                 "Accept" => 0, "Accept-Charset" => 1, "Accept-Encoding" => 2, "Accept-Language" => 3,
                 "Accept-Ranges" => 4, "Age" => 5, "Allow" => 6, "Authorization" => 7, "Cache-Control" => 8,
@@ -110,9 +98,7 @@ macro_rules! keysets {
                 "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security",
                 "Access-Control-Allow-Origin", "Content-MD5",
             ]
-        }
-        // JavaScript reserved words: 45 keys, up to 10 bytes
-        $callback! {
+            // JavaScript reserved words: 45 keys, up to 10 bytes
             extra jsreserved {
                 "await" => 0, "break" => 1, "case" => 2, "catch" => 3, "class" => 4, "const" => 5,
                 "continue" => 6, "debugger" => 7, "default" => 8, "delete" => 9, "do" => 10, "else" => 11,
@@ -128,9 +114,7 @@ macro_rules! keysets {
                 "Boolean", "undefined", "NaN", "Infinity", "Math", "Date", "RegExp", "JSON", "Promise",
                 "async", "arguments",
             ]
-        }
-        // Telemetry counters: 10 keys, up to 21 bytes
-        $callback! {
+            // Telemetry counters: 10 keys, up to 21 bytes
             core counters {
                 "total_items" => 0, "successful_operations" => 1, "failed_operations" => 2, "warnings" => 3,
                 "errors" => 4, "retries" => 5, "bytes_processed" => 6, "records_read" => 7,
@@ -140,9 +124,7 @@ macro_rules! keysets {
                 "records_validated", "total_bytes", "processed_bytes", "failed_requests", "invalid_records",
                 "total_records", "matched_records", "written_records", "ok_count", "error_count",
             ]
-        }
-        // Java class names: 40 keys, 24 to 54 bytes
-        $callback! {
+            // Java class names: 40 keys, 24 to 54 bytes
             core fqcn {
                 "java.util.concurrent.ConcurrentHashMap" => 0,
                 "java.util.concurrent.ConcurrentLinkedQueue" => 1,
