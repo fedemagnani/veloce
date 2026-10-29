@@ -4,10 +4,11 @@
 //! - [`probe`] and [`probes!`] define them in the crate, but they compile only where a downstream crate expands them
 //! - so they show what the crate's users get: the same cross-crate inlining, and the public API only
 //! - each definition registers itself in the compiled crate, where `cargo codegen` finds it
+//! - all of it is a no-op unless the `enabled` feature is on, which only `cargo codegen` turns on
 //!
 //! ## Example
 //!
-//! In the probed crate, behind a feature of its own, `codegen = ["dep:codegen"]`:
+//! In the probed crate, with `codegen` as a plain dependency:
 //!
 //! ```rust
 //! pub fn tripled(x: u8) -> u8 {
@@ -29,10 +30,13 @@
 //!     }
 //! }
 //! # fn main() {
-//! #     __codegen_probe_demo_tripled!();
-//! #     __codegen_probe_demo!();
-//! #     assert_eq!(demo_tripled(2), 6);
-//! #     assert_eq!(demo_sixfold(2), 12);
+//! #     #[cfg(feature = "enabled")]
+//! #     {
+//! #         __codegen_probe_demo_tripled!();
+//! #         __codegen_probe_demo!();
+//! #         assert_eq!(demo_tripled(2), 6);
+//! #         assert_eq!(demo_sixfold(2), 12);
+//! #     }
 //! # }
 //! ```
 //!
@@ -43,6 +47,21 @@
 //! - other items of a `mod`, such as `use`, statics or macro invocations, are expanded as written
 //! - [`probes!`] is the same as a probe `mod`, for macros generating probes: write `$crate::` there
 //! - keep the dependency named `codegen`: the attribute expands to `::codegen::probes!`
+//!
+//! ## Watching functions
+//!
+//! [`watch`] marks a function of the crate, any probe being free to inline it: `cargo codegen stats` then counts, per
+//! probe, the instructions coming from that function, the callees it inlines included. It leaves the code unchanged.
+//!
+//! ```rust
+//! #[codegen::watch]
+//! pub fn tripled(x: u8) -> u8 {
+//!     x.wrapping_mul(3)
+//! }
+//! # fn main() {
+//! #     assert_eq!(tripled(2), 6);
+//! # }
+//! ```
 //!
 //! ```compile_fail
 //! codegen::probes!(generic_probes {
@@ -55,9 +74,10 @@
 //! ```
 //! - `#[cfg]` inside a `mod` or block is evaluated in the expanding crate: gate the whole `mod` or `probes!` instead
 
-pub use codegen_macros::probe;
+pub use codegen_macros::{probe, watch};
 
 /// Defines the exported macro `$name!()`, expanding the probes in the crate that invokes it, and registers it
+#[cfg(feature = "enabled")]
 #[macro_export]
 macro_rules! probes {
     ($name:ident { $($body:tt)* }) => {
@@ -78,6 +98,13 @@ macro_rules! probes {
             static REGISTRY: [u8; ENTRY.len()] = $crate::__registry_entry(ENTRY);
         };
     };
+}
+
+/// Without the `enabled` feature, which `cargo codegen` turns on, probes compile to nothing
+#[cfg(not(feature = "enabled"))]
+#[macro_export]
+macro_rules! probes {
+    ($name:ident { $($body:tt)* }) => {};
 }
 
 /// The bytes of a registry entry, as an array a `#[used]` static can hold in place
@@ -141,7 +168,47 @@ macro_rules! __probe_items {
 #[cfg(test)]
 extern crate self as codegen;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "enabled")))]
+mod disabled_test {
+    #[crate::probe]
+    fn codegen_disabled_twice() -> u8 {
+        1
+    }
+
+    #[crate::probe]
+    mod codegen_disabled_block {
+        fn codegen_disabled_in_block() {}
+    }
+
+    // compiles only because the probes above were removed, the same names being free again
+    fn codegen_disabled_twice() -> u8 {
+        2
+    }
+
+    mod codegen_disabled_block {}
+
+    crate::probes!(disabled_probes {
+        fn codegen_disabled_macro() {}
+    });
+
+    fn codegen_disabled_macro() {}
+
+    #[crate::watch]
+    fn watched_as_written(x: u8) -> u8 {
+        x + 1
+    }
+
+    #[test]
+    fn disabled_attributes_leave_production_code_alone() {
+        let kept = codegen_disabled_twice();
+        let watched = watched_as_written(1);
+        codegen_disabled_macro();
+        assert_eq!(kept, 2);
+        assert_eq!(watched, 2);
+    }
+}
+
+#[cfg(all(test, feature = "enabled"))]
 mod test {
     pub const BASE: u64 = 40;
 
@@ -270,5 +337,24 @@ mod test {
         }
         let through_symbol = codegen_test_attribute_mod(1);
         assert_eq!(through_symbol, 4);
+    }
+
+    pub struct Counter(u64);
+
+    impl Counter {
+        #[crate::watch]
+        /// Attributes after the watch stay on the method
+        #[inline]
+        pub fn bumped(&mut self) -> u64 {
+            self.0 += 1;
+            self.0
+        }
+    }
+
+    #[test]
+    fn watched_functions_behave_as_written() {
+        let mut counter = Counter(41);
+        let bumped = counter.bumped();
+        assert_eq!(bumped, 42);
     }
 }

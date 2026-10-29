@@ -3,6 +3,7 @@
 //! A probe is any `#[unsafe(no_mangle)]` function of the generated host crate, found by symbol in its emitted assembly.
 
 mod asm;
+mod attribution;
 mod baseline;
 mod emit;
 mod host;
@@ -28,7 +29,7 @@ build options, each defaulting to [package.metadata.codegen] of the package:
   -p, --package <name>       package holding the probes, else the one containing the current directory
   --features <list>          features to build with, replacing the metadata's `features`
   --no-default-features      build without the package's default features
-  --feature <name>           feature enabling the probes, else the metadata's `feature`, else `codegen`
+  --feature <name>           feature enabling an optional `codegen` dependency, else the metadata's `feature`, else `codegen`
 save and diff default to the targets the baseline holds, save to the host when it holds none";
 
 /// Options taking a value; the build options and `--target` are parsed apart

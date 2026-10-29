@@ -1,6 +1,8 @@
-//! `#[codegen::probe]`, turning a `fn` or an inline `mod` into probes; use it through the `codegen` crate
+//! `#[codegen::probe]` and `#[codegen::watch]`; use them through the `codegen` crate
+//!
+//! Both check their item in every build, but expand only under the `enabled` feature, which `cargo codegen` turns on.
 
-use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 
 /// Prefix of the macro a probe attribute defines, keeping clear of the crate's own exported macros
 const MACRO_PREFIX: &str = "__codegen_probe_";
@@ -8,8 +10,22 @@ const MACRO_PREFIX: &str = "__codegen_probe_";
 /// Turns a `fn` into a probe, or an inline `mod` into a block of probes, compiled only where `cargo codegen` expands them
 #[proc_macro_attribute]
 pub fn probe(args: TokenStream, item: TokenStream) -> TokenStream {
-    let expanded = expand(args, item);
-    expanded.unwrap_or_else(|(message, span)| compile_error(&message, span))
+    match expand(args, item) {
+        Ok(expanded) if cfg!(feature = "enabled") => expanded,
+        // a probe is no production code, so it goes away rather than stay behind as a dead `fn`
+        Ok(_) => TokenStream::new(),
+        Err((message, span)) => compile_error(&message, span),
+    }
+}
+
+/// Leaves a `fn` as written, registering it so `cargo codegen` attributes the instructions it inlines into probes
+#[proc_macro_attribute]
+pub fn watch(args: TokenStream, item: TokenStream) -> TokenStream {
+    match expand_watch(args, item.clone()) {
+        Ok(expanded) if cfg!(feature = "enabled") => expanded,
+        Ok(_) => item,
+        Err((message, span)) => compile_error(&message, span),
+    }
 }
 
 /// `::codegen::probes!(<macro> { .. })` over the item, its `crate::` paths made `$crate::`
@@ -116,6 +132,61 @@ fn probes_invocation(macro_name: Ident, body: TokenStream) -> TokenStream {
     let invocation = TokenTree::Group(Group::new(Delimiter::Parenthesis, arguments));
     let semicolon = TokenTree::Punct(Punct::new(';', Spacing::Alone));
     path.into_iter().chain([invocation, semicolon]).collect()
+}
+
+/// The `fn` with a registry static first in its body: an item, so the function's code is unchanged
+fn expand_watch(args: TokenStream, item: TokenStream) -> Result<TokenStream, (String, Span)> {
+    if let Some(arg) = args.into_iter().next() {
+        let message = "#[codegen::watch] takes no arguments".to_string();
+        return Err((message, arg.span()));
+    }
+    let mut tokens: Vec<TokenTree> = item.into_iter().collect();
+    let Some((position, "fn")) = keyword_position(&tokens) else {
+        let span = tokens.first().map_or_else(Span::call_site, TokenTree::span);
+        return Err(("#[codegen::watch] goes on a `fn`".to_string(), span));
+    };
+    let name = ident_after(&tokens, position)?;
+    let first = tokens.first().map(TokenTree::span).unwrap_or(name.span());
+    let Some(TokenTree::Group(body)) = tokens.last() else {
+        let message = "#[codegen::watch] needs a `fn` with a body".to_string();
+        return Err((message, name.span()));
+    };
+    if body.delimiter() != Delimiter::Brace {
+        let message = "#[codegen::watch] needs a `fn` with a body".to_string();
+        return Err((message, name.span()));
+    }
+    let entry = watch_entry(&name, first, body.span());
+    let registry = registry_static(&entry);
+    let mut statements = registry;
+    statements.extend(body.stream());
+    let mut with_registry = Group::new(Delimiter::Brace, statements);
+    with_registry.set_span(body.span());
+    let last = tokens.len() - 1;
+    tokens[last] = TokenTree::Group(with_registry);
+    Ok(tokens.into_iter().collect())
+}
+
+/// `codegen-watch:<name>:<first line>:<last line>:<file>`, the lines spanning the item, its attributes included
+fn watch_entry(name: &Ident, first: Span, body: Span) -> String {
+    let file = first
+        .local_file()
+        .map_or_else(|| first.file(), |path| path.display().to_string());
+    let first_line = first.start().line();
+    let last_line = body.end().line();
+    format!("codegen-watch:{name}:{first_line}:{last_line}:{file}\n")
+}
+
+/// A `#[used]` static holding `entry` in the `codegen` section, where `cargo codegen` reads it from the rlib
+fn registry_static(entry: &str) -> TokenStream {
+    let bytes = Literal::byte_string(entry.as_bytes());
+    let length = entry.len();
+    let code = format!(
+        "#[used]
+        #[cfg_attr(target_vendor = \"apple\", unsafe(link_section = \"__DATA,codegen\"))]
+        #[cfg_attr(not(target_vendor = \"apple\"), unsafe(link_section = \"codegen\"))]
+        static __CODEGEN_WATCH: [u8; {length}] = *{bytes};"
+    );
+    code.parse().expect("a valid static")
 }
 
 /// `::core::compile_error!("<message>");` pointing at `span`

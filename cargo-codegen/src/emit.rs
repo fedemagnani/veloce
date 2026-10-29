@@ -8,10 +8,10 @@ use std::time::SystemTime;
 use serde_json::Value;
 
 use crate::host;
-use crate::registry;
+use crate::registry::{self, Registry, Watch};
 use crate::target::Target;
 
-/// Feature enabling the probes when neither the command line nor the metadata names one
+/// Feature enabling an optional `codegen` dependency when neither the command line nor the metadata names one
 pub const DEFAULT_FEATURE: &str = "codegen";
 
 /// Target kinds that are not libraries, every other kind (`lib`, `rlib`, `cdylib`, ..) being one
@@ -38,6 +38,8 @@ pub struct Package {
     /// Features the package is built with, the probe feature included
     features: Vec<String>,
     default_features: bool,
+    /// Where the package gets `codegen` from, so the host enables `codegen/enabled` on that very crate
+    codegen_source: String,
     /// Root of the package's workspace, whose `Cargo.lock` pins the host crate's dependencies
     workspace_root: PathBuf,
     target_dir: PathBuf,
@@ -61,7 +63,10 @@ impl Package {
             .to_path_buf();
         let library = library_name(package, &name)?;
         let defaults = &package["metadata"]["codegen"];
-        let features = features(request, defaults);
+        let dependency = codegen_dependency(package, &name)?;
+        let codegen_source = dependency_source(dependency, &name)?;
+        let optional = dependency["optional"] == Value::Bool(true);
+        let features = features(request, defaults, optional);
         let default_features =
             !(request.no_default_features || defaults["no-default-features"] == Value::Bool(true));
         Ok(Self {
@@ -71,6 +76,7 @@ impl Package {
             library,
             features,
             default_features,
+            codegen_source,
             workspace_root,
             target_dir,
         })
@@ -78,8 +84,23 @@ impl Package {
 
     /// Assembly of the probes built for `target`
     pub fn assembly(&self, target: &Target) -> Result<String, String> {
-        let path = self.emit(&target.triple)?;
-        fs::read_to_string(&path).map_err(|error| format!("reading {}: {error}", path.display()))
+        let build = self.build(target)?;
+        Ok(build.assembly)
+    }
+
+    /// The probes built for `target`: their assembly, the object it assembles to and the watched functions
+    pub fn build(&self, target: &Target) -> Result<Build, String> {
+        let (listing, watches) = self.emit(&target.triple)?;
+        let assembly = fs::read_to_string(&listing)
+            .map_err(|error| format!("reading {}: {error}", listing.display()))?;
+        let object_path = listing.with_extension("o");
+        let object = fs::read(&object_path)
+            .map_err(|error| format!("reading {}: {error}", object_path.display()))?;
+        Ok(Build {
+            assembly,
+            object,
+            watches,
+        })
     }
 
     /// `target/codegen/<package>`, where every command writes
@@ -93,10 +114,10 @@ impl Package {
     }
 
     /// Builds the package, reads its probe registry, then builds the host expanding them with `--emit asm`
-    fn emit(&self, triple: &str) -> Result<PathBuf, String> {
+    fn emit(&self, triple: &str) -> Result<(PathBuf, Vec<Watch>), String> {
         let host_dir = self.write_host(&[])?;
         let rlib = self.build_package(&host_dir, triple)?;
-        let probes = registry::read(&rlib)?;
+        let Registry { probes, watches } = registry::read(&rlib)?;
         if probes.is_empty() {
             return Err(format!(
                 "package {} registers no probes: define them with `#[codegen::probe]` or `codegen::probes!`",
@@ -108,8 +129,8 @@ impl Package {
         // `release`, which `bench` inherits: `--profile bench` would build a bench harness needing a linker
         let args = ["rustc", "--quiet", "--lib", "--release", "--target", triple];
         command.args(args);
-        // only the host crate is emitted, its dependencies build as usual
-        command.args(["--", "--emit", "asm"]);
+        // only the host crate is emitted, its dependencies build as usual; debuginfo changes no instruction
+        command.args(["--", "--emit", "asm,obj", "-C", "debuginfo=limited"]);
         let status = command.status();
         let status = status.map_err(|error| format!("running cargo: {error}"))?;
         if !status.success() {
@@ -120,8 +141,9 @@ impl Package {
         }
         let release_dir = self.target_dir.join(triple).join("release");
         let crate_name = host::crate_name(&self.name);
-        newest_listing(&release_dir, &crate_name)
-            .ok_or_else(|| format!("no {crate_name}-*.s under {}", release_dir.display()))
+        let listing = newest_listing(&release_dir, &crate_name)
+            .ok_or_else(|| format!("no {crate_name}-*.s under {}", release_dir.display()))?;
+        Ok((listing, watches))
     }
 
     /// Builds the host expanding no probes, returning the rlib of the package it depends on
@@ -169,6 +191,7 @@ impl Package {
             library: &self.library,
             features: &self.features,
             default_features: self.default_features,
+            codegen_source: &self.codegen_source,
             probes,
         };
         let manifest = host::manifest(&spec);
@@ -184,6 +207,14 @@ impl Package {
         }
         Ok(host_dir)
     }
+}
+
+/// The probes as built for one target
+pub struct Build {
+    pub assembly: String,
+    /// The object file the same compilation assembled, its DWARF telling which inlined function each byte is from
+    pub object: Vec<u8>,
+    pub watches: Vec<Watch>,
 }
 
 /// The targets requested, the host when none is
@@ -259,12 +290,62 @@ fn library_name(package: &Value, name: &str) -> Result<String, String> {
     Ok(library_name.replace('-', "_"))
 }
 
-/// The command line's features, else the metadata's, plus the feature enabling the probes
-fn features(request: &Request, defaults: &Value) -> Vec<String> {
+/// The package's normal dependency on `codegen`, under that name, as the attributes expand to `::codegen::`
+fn codegen_dependency<'p>(package: &'p Value, name: &str) -> Result<&'p Value, String> {
+    let dependencies = package["dependencies"].as_array();
+    let found = dependencies.into_iter().flatten().find(|dependency| {
+        let is_normal = dependency["kind"].is_null();
+        let is_unrenamed = dependency["rename"].is_null();
+        dependency["name"] == "codegen" && is_normal && is_unrenamed
+    });
+    found.ok_or_else(|| {
+        format!("package {name} doesn't depend on `codegen` under that name, which its probes need")
+    })
+}
+
+/// The dependency's source as TOML: `path = ..`, `version = ..` from crates.io, or `git = .., rev = ..`
+fn dependency_source(dependency: &Value, name: &str) -> Result<String, String> {
+    if let Some(path) = dependency["path"].as_str() {
+        return Ok(format!("path = {}", toml_string(path)));
+    }
+    let source = dependency["source"].as_str().unwrap_or_default();
+    let requirement = dependency["req"].as_str().unwrap_or("*");
+    if source == "registry+https://github.com/rust-lang/crates.io-index"
+        || source == "sparse+https://index.crates.io/"
+    {
+        return Ok(format!("version = {}", toml_string(requirement)));
+    }
+    if let Some(git) = source.strip_prefix("git+") {
+        // `git+<url>?<branch or tag>#<commit>`: the commit, so the host gets the very same checkout
+        let (url, commit) = git.split_once('#').unwrap_or((git, ""));
+        let url = url.split('?').next().unwrap_or(url);
+        let rev = if commit.is_empty() {
+            String::new()
+        } else {
+            format!(", rev = {}", toml_string(commit))
+        };
+        return Ok(format!("git = {}{rev}", toml_string(url)));
+    }
+    Err(format!(
+        "package {name} gets `codegen` from {source}, which cargo-codegen can't mirror"
+    ))
+}
+
+/// A TOML basic string
+fn toml_string(text: &str) -> String {
+    let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
+/// The command line's features, else the metadata's, plus the one enabling an optional `codegen` dependency
+fn features(request: &Request, defaults: &Value, optional: bool) -> Vec<String> {
     let mut features = match &request.features {
         Some(features) => features.clone(),
         None => string_list(&defaults["features"]),
     };
+    if !optional {
+        return features;
+    }
     let feature = request.feature.clone();
     let feature = feature.or_else(|| defaults["feature"].as_str().map(str::to_string));
     let feature = feature.unwrap_or_else(|| DEFAULT_FEATURE.to_string());
@@ -407,16 +488,37 @@ mod test {
     }
 
     #[test]
-    fn the_probe_feature_is_always_enabled_once() {
+    fn an_optional_codegen_gets_its_feature_enabled_once() {
         let defaults = serde_json::json!({ "features": ["fast", "codegen"] });
         let renamed = serde_json::json!({ "features": ["fast"], "feature": "probes" });
         let none = Request::default();
-        let listed = features(&none, &defaults);
-        let named = features(&none, &renamed);
-        let default = features(&none, &Value::Null);
+        let listed = features(&none, &defaults, true);
+        let named = features(&none, &renamed, true);
+        let default = features(&none, &Value::Null, true);
+        let plain = features(&none, &renamed, false);
         assert_eq!(listed, ["fast", "codegen"]);
         assert_eq!(named, ["fast", "probes"]);
         assert_eq!(default, ["codegen"]);
+        assert_eq!(plain, ["fast"]);
+    }
+
+    #[test]
+    fn the_codegen_source_is_mirrored() {
+        let path = serde_json::json!({ "path": "/work/codegen" });
+        let registry = serde_json::json!({ "source": "registry+https://github.com/rust-lang/crates.io-index", "req": "^0.3" });
+        let git = serde_json::json!({ "source": "git+https://github.com/me/codegen?branch=main#0123abc" });
+        let other = serde_json::json!({ "source": "registry+https://my.registry/index" });
+        let path = dependency_source(&path, "demo");
+        let registry = dependency_source(&registry, "demo");
+        let git = dependency_source(&git, "demo");
+        let other = dependency_source(&other, "demo");
+        assert_eq!(path, Ok(r#"path = "/work/codegen""#.to_string()));
+        assert_eq!(registry, Ok(r#"version = "^0.3""#.to_string()));
+        assert_eq!(
+            git,
+            Ok(r#"git = "https://github.com/me/codegen", rev = "0123abc""#.to_string())
+        );
+        assert!(other.unwrap_err().contains("can't mirror"));
     }
 
     #[test]

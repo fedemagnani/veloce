@@ -47,9 +47,35 @@ pub fn normalize(body: &[&str], target: &Target) -> Vec<Line> {
                 let instruction = rewrite(mnemonic, operands, target, &mut names);
                 lines.push(Line::Instruction(instruction));
             }
+            RawLine::Align(_) => {}
         }
     }
     lines
+}
+
+/// What a body lays out in its object, in order: instructions, the same ones `normalize` keeps, and alignments
+pub fn layout(body: &[&str], target: &Target) -> Vec<Slot> {
+    let raw_lines = parse_lines(body, target);
+    let slots = raw_lines.iter().filter_map(|raw| match raw {
+        RawLine::Instruction { .. } => Some(Slot::Instruction),
+        RawLine::Align(alignment) => Some(Slot::Align(*alignment)),
+        RawLine::Label(_) => None,
+    });
+    slots.collect()
+}
+
+/// An entry of a body's layout
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slot {
+    Instruction,
+    Align(Alignment),
+}
+
+/// Padding to a multiple of `bytes`, skipped when it would take more than `max_skip` bytes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Alignment {
+    pub bytes: u64,
+    pub max_skip: Option<u64>,
 }
 
 impl Line {
@@ -67,13 +93,14 @@ impl Line {
     }
 }
 
-/// A body line before renaming, directives and comments already dropped
+/// A body line before renaming, comments and directives other than alignment already dropped
 enum RawLine<'a> {
     Label(&'a str),
     Instruction { mnemonic: String, operands: String },
+    Align(Alignment),
 }
 
-/// Drops comments, blank lines and directives, splitting the rest into labels and instructions
+/// Drops comments, blank lines and directives but alignment, splitting the rest into labels and instructions
 fn parse_lines<'a>(body: &[&'a str], target: &Target) -> Vec<RawLine<'a>> {
     let mut lines = Vec::new();
     for line in body {
@@ -87,6 +114,10 @@ fn parse_lines<'a>(body: &[&'a str], target: &Target) -> Vec<RawLine<'a>> {
             lines.push(RawLine::Label(label));
             continue;
         }
+        if let Some(alignment) = alignment(code) {
+            lines.push(RawLine::Align(alignment));
+            continue;
+        }
         if code.starts_with('.') {
             continue;
         }
@@ -94,6 +125,21 @@ fn parse_lines<'a>(body: &[&'a str], target: &Target) -> Vec<RawLine<'a>> {
         lines.push(RawLine::Instruction { mnemonic, operands });
     }
     lines
+}
+
+/// The padding `.p2align <log2>[, fill[, max]]` or `.balign <bytes>[, fill[, max]]` asks for
+fn alignment(code: &str) -> Option<Alignment> {
+    let (directive, arguments) = code.split_once(char::is_whitespace)?;
+    let mut fields = arguments.split(',').map(str::trim);
+    let amount: u64 = fields.next()?.parse().ok()?;
+    let bytes = match directive {
+        ".p2align" => 1u64.checked_shl(u32::try_from(amount).ok()?)?,
+        ".balign" => amount,
+        _ => return None,
+    };
+    let _fill = fields.next();
+    let max_skip = fields.next().and_then(|max| max.parse().ok());
+    Some(Alignment { bytes, max_skip })
 }
 
 /// `line` up to its first comment marker

@@ -215,6 +215,7 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
     }
 
     /// Hash slot of `key`
+    #[codegen::watch]
     #[inline(always)]
     pub(crate) const fn compute_hash(&self, key: &[u8]) -> usize {
         // one never-taken branch gates both displacement modes
@@ -351,6 +352,7 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
     }
 
     /// Whether the probe, at most L bytes, equals the key stored at `slot`, the length checked apart
+    #[codegen::watch]
     #[inline(always)]
     fn compare_key(&self, probe: &[u8], slot: usize) -> bool {
         if probe.is_empty() {

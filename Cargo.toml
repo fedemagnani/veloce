@@ -29,14 +29,13 @@ async = ["dep:futures"]
 bench = ["spsc", "swmr", "perfect-hash"]
 # `bench` plus the perfect_hash key sets whose lookup path another set already covers
 bench-full = ["bench"]
-# probes of the hot paths for `cargo codegen`, which expands them in a downstream crate it generates
-codegen = ["dep:codegen"]
 
 [dependencies]
 crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
 paste = { version = "1.0.15", optional = true }
-codegen = { path = "codegen", optional = true }
+# probes and watched functions for `cargo codegen`: no-ops in every other build
+codegen = { path = "codegen" }
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -63,6 +62,6 @@ required-features = ["swmr"]
 name = "main"
 required-features = ["bench"]
 
-# what `cargo codegen` builds besides the defaults and `codegen`, so every module's probes are in
+# what `cargo codegen` builds besides the default features, so every module's probes are in
 [package.metadata.codegen]
 features = ["perfect-hash"]

@@ -60,6 +60,7 @@ where
     }
 
     /// Returns the index of the slot containing the latest published value.
+    #[codegen::watch]
     fn pin_current_slot(&mut self) -> usize {
         // load the slot info of the latest version of the published data
         let mut current = self.register.current.load(Ordering::Acquire);

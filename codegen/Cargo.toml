@@ -6,6 +6,10 @@ description = "Probes for assembly-aware analysis: never-inlined wrappers of a c
 license = "MIT OR Apache-2.0"
 publish = false
 
+[features]
+# turns the attributes and `probes!` on; `cargo codegen` enables it, so a crate never does
+enabled = ["codegen-macros/enabled"]
+
 [dependencies]
 # `#[codegen::probe]`, re-exported as `probe`
 codegen-macros = { path = "../codegen-macros" }

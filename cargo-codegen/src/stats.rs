@@ -2,10 +2,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::emit::{self, Package};
+use crate::attribution::Inlines;
+use crate::emit::{self, Build, Package};
 use crate::isa::classify;
 use crate::listing::{Listing, Probe};
-use crate::normalize::{Instruction, Line, normalize};
+use crate::normalize::{Instruction, Line, layout, normalize};
 use crate::target::{Arch, Target};
 
 /// Functions a failed check ends in, so referencing one means a check survived optimization
@@ -30,14 +31,127 @@ pub const COLUMNS: [&str; 10] = [
 /// Prints a table of every probe's stats per target, the host when none is given
 pub fn run(package: &Package, triples: &[String]) -> Result<(), String> {
     for target in emit::targets(triples)? {
-        let text = package.assembly(&target)?;
-        let listing = Listing::parse(&text, &target);
+        let build = package.build(&target)?;
+        let listing = Listing::parse(&build.assembly, &target);
         let probes = listing.probes()?;
         let rows = rows(&probes, &target);
         println!("== {}", target.triple);
         print!("{}", table(&rows));
+        if !build.watches.is_empty() {
+            let watched = watched_rows(&probes, &build, &target)?;
+            print!("{}", watched_table(&watched));
+        }
     }
     Ok(())
+}
+
+/// A watched function's share of a probe, or why the probe couldn't be attributed
+pub enum WatchedRow {
+    Share {
+        probe: String,
+        function: String,
+        stats: Stats,
+    },
+    Unavailable {
+        probe: String,
+        reason: String,
+    },
+}
+
+/// One row per watched function each probe inlines, probes sorted by name
+fn watched_rows(
+    probes: &[Probe<'_>],
+    build: &Build,
+    target: &Target,
+) -> Result<Vec<WatchedRow>, String> {
+    let inlines = Inlines::parse(&build.object)?;
+    let mut sorted: Vec<&Probe<'_>> = probes.iter().collect();
+    sorted.sort_by_key(|probe| probe.name);
+    let mut rows = Vec::new();
+    for probe in sorted {
+        // a merged probe's symbol and DWARF are those of the body it shares
+        let source = probe.merged_into.unwrap_or(probe.name);
+        let shares = shares(&inlines, probe, source, build, target);
+        match shares {
+            Ok(shares) => rows.extend(shares),
+            Err(reason) => rows.push(WatchedRow::Unavailable {
+                probe: probe.name.to_string(),
+                reason,
+            }),
+        }
+    }
+    Ok(rows)
+}
+
+/// The share of each watched function inlined into `probe`, its instances merged
+fn shares(
+    inlines: &Inlines<'_>,
+    probe: &Probe<'_>,
+    source: &str,
+    build: &Build,
+    target: &Target,
+) -> Result<Vec<WatchedRow>, String> {
+    let watched = inlines.watched(source, &build.watches)?;
+    if watched.is_empty() {
+        return Ok(Vec::new());
+    }
+    let slots = layout(&probe.body, target);
+    let offsets = inlines.offsets(source, &slots, target)?;
+    let lines = normalize(&probe.body, target);
+    let mut by_watch: BTreeMap<usize, (String, Vec<std::ops::Range<u64>>)> = BTreeMap::new();
+    for instance in watched {
+        let entry = by_watch
+            .entry(instance.watch)
+            .or_insert((instance.display, Vec::new()));
+        entry.1.extend(instance.ranges);
+    }
+    let rows = by_watch.into_values().map(|(function, ranges)| {
+        let covered = |index: usize| ranges.iter().any(|range| range.contains(&offsets[index]));
+        let stats = Stats::of_selected(&lines, covered, target.arch);
+        WatchedRow::Share {
+            probe: probe.name.to_string(),
+            function,
+            stats,
+        }
+    });
+    Ok(rows.collect())
+}
+
+/// The table of watched functions' shares, an unattributed probe shown with its reason
+fn watched_table(rows: &[WatchedRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let label = |row: &WatchedRow| match row {
+        WatchedRow::Share {
+            probe, function, ..
+        } => format!("{probe} > {function}"),
+        WatchedRow::Unavailable { probe, .. } => probe.clone(),
+    };
+    let width = rows.iter().map(|row| label(row).len()).max().unwrap_or(0);
+    let width = width.max("watched".len());
+    let header: Vec<String> = COLUMNS
+        .iter()
+        .map(|column| format!("{column:>8}"))
+        .collect();
+    let mut out = format!("{:<width$} {}\n", "watched", header.join(""));
+    for row in rows {
+        let cells = match row {
+            WatchedRow::Share { stats, .. } => {
+                let cells: Vec<String> = stats
+                    .cells()
+                    .iter()
+                    .map(|cell| format!("{cell:>8}"))
+                    .collect();
+                cells.join("")
+            }
+            WatchedRow::Unavailable { reason, .. } => {
+                format!("  attribution unavailable: {reason}")
+            }
+        };
+        out += &format!("{:<width$} {cells}\n", label(row));
+    }
+    out
 }
 
 /// Stats of every probe, sorted by name
@@ -81,6 +195,21 @@ impl Stats {
         let mut stats = Self::default();
         for line in lines {
             if let Line::Instruction(instruction) = line {
+                stats.add(instruction, arch);
+            }
+        }
+        stats
+    }
+
+    /// Counts the instructions of `lines` whose index among instructions `keep` accepts
+    pub fn of_selected(lines: &[Line], keep: impl Fn(usize) -> bool, arch: Arch) -> Self {
+        let mut stats = Self::default();
+        let instructions = lines.iter().filter_map(|line| match line {
+            Line::Instruction(instruction) => Some(instruction),
+            Line::Label(_) => None,
+        });
+        for (index, instruction) in instructions.enumerate() {
+            if keep(index) {
                 stats.add(instruction, arch);
             }
         }

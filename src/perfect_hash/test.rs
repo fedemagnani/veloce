@@ -844,6 +844,7 @@ fn check_set<const N: usize, const T: usize, const L: usize, const W: usize>(
 }
 
 /// Declaration index of `probe` by linear search, the reference lookups are checked against
+#[cfg(all(unix, not(miri)))]
 fn expected_index(keys: &[&str], probe: &[u8]) -> Option<usize> {
     keys.iter().position(|key| key.as_bytes() == probe)
 }
