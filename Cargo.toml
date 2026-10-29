@@ -14,19 +14,26 @@ members = ["codegen"]
 default-members = ["."]
 
 [features]
-default = ["async"]
-async = ["futures"]
+default = ["spsc", "swmr", "async"]
+# slot storage of the ring buffers, exposing the `Storable` trait
+ring = []
+# lock-free bounded single-producer-single-consumer channels
+spsc = ["ring", "dep:crossbeam-utils", "dep:paste"]
+# single-writer-multi-reader register of the latest value
+swmr = ["dep:crossbeam-utils"]
 # compile-time perfect hash sets and maps
-perfect-hash = []
+perfect-hash = ["dep:paste"]
+# async waiting for the enabled primitives
+async = ["dep:futures"]
 # requires nightly: `cargo +nightly bench --features bench`
-bench = ["perfect-hash"]
+bench = ["spsc", "swmr", "perfect-hash"]
 # `bench` plus the perfect_hash key sets whose lookup path another set already covers
 bench-full = ["bench"]
 
 [dependencies]
-crossbeam-utils = "0.8.21"
+crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
-paste = "1.0.15"
+paste = { version = "1.0.15", optional = true }
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -44,6 +51,10 @@ hashbrown = "0.17.1"
 ahash = "0.8.12"
 rustc-hash = "2.1.3"
 libc = "0.2"
+
+[[test]]
+name = "swmr_stress"
+required-features = ["swmr"]
 
 [[bench]]
 name = "main"
