@@ -1,9 +1,11 @@
 //! An emitted assembly file: the probes it exports and the body of each
 
+use crate::target::Target;
+
 /// Assembly of the probe library for one target
 pub struct Listing<'a> {
     lines: Vec<&'a str>,
-    target: &'a str,
+    triple: &'a str,
     // Mach-O prefixes C symbols with an underscore, ELF doesn't
     prefix: &'static str,
 }
@@ -19,19 +21,13 @@ pub struct Probe<'a> {
 
 impl<'a> Listing<'a> {
     /// Splits `text`, emitted for `target`, into lines
-    pub fn parse(text: &'a str, target: &'a str) -> Self {
-        let prefix = if target.contains("-apple-") { "_" } else { "" };
+    pub fn parse(text: &'a str, target: &'a Target) -> Self {
         let lines = text.lines().collect();
         Self {
             lines,
-            target,
-            prefix,
+            triple: &target.triple,
+            prefix: target.symbol_prefix(),
         }
-    }
-
-    /// Triple the listing was emitted for
-    pub fn target(&self) -> &'a str {
-        self.target
     }
 
     /// Every exported unmangled symbol, in order of appearance, with its body
@@ -65,7 +61,7 @@ impl<'a> Listing<'a> {
         let source = merged_into.unwrap_or(name);
         let body = self
             .body_of(source)
-            .ok_or_else(|| format!("no body for {name} in the {} listing", self.target))?;
+            .ok_or_else(|| format!("no body for {name} in the {} listing", self.triple))?;
         Ok(Probe {
             name,
             merged_into,
@@ -135,7 +131,8 @@ probe_c:
 
     #[test]
     fn mach_o_probes_skip_mangled_symbols_and_follow_aliases() {
-        let listing = Listing::parse(MACH_O, "aarch64-apple-darwin");
+        let target = Target::parse("aarch64-apple-darwin").unwrap();
+        let listing = Listing::parse(MACH_O, &target);
         let probes = listing.probes().unwrap();
         let names: Vec<&str> = probes.iter().map(|probe| probe.name).collect();
         assert_eq!(names, ["probe_a", "probe_b"]);
@@ -156,7 +153,8 @@ probe_c:
 
     #[test]
     fn elf_probes_have_no_prefix_and_accept_set_aliases() {
-        let listing = Listing::parse(ELF, "x86_64-unknown-linux-gnu");
+        let target = Target::parse("x86_64-unknown-linux-gnu").unwrap();
+        let listing = Listing::parse(ELF, &target);
         let probes = listing.probes().unwrap();
         let names: Vec<&str> = probes.iter().map(|probe| probe.name).collect();
         assert_eq!(names, ["probe_c", "probe_d"]);
@@ -166,7 +164,8 @@ probe_c:
 
     #[test]
     fn an_exported_symbol_without_a_body_is_an_error() {
-        let listing = Listing::parse("\t.globl\t_lonely", "aarch64-apple-darwin");
+        let target = Target::parse("aarch64-apple-darwin").unwrap();
+        let listing = Listing::parse("\t.globl\t_lonely", &target);
         let error = listing.probes().err().unwrap();
         assert!(error.contains("no body for lonely"), "{error}");
     }

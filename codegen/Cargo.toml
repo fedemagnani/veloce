@@ -9,3 +9,5 @@ publish = false
 [dependencies]
 # defaults plus `perfect-hash`, the feature set of `cargo bench --features bench`, so probes see the code the benches measure
 veloce = { path = "..", features = ["perfect-hash"] }
+# demangles symbols in normalized listings, the demangler rustc itself uses
+rustc-demangle = "0.1.28"

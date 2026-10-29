@@ -1,12 +1,19 @@
 //! Command line of the codegen tool: `cargo run -p codegen -- <command>`
 
 mod asm;
+mod emit;
+mod isa;
 mod listing;
+mod normalize;
+mod stats;
+mod target;
 
 use std::process::ExitCode;
 
 /// Usage, shown on `--help` and on a malformed command line
-const USAGE: &str = "usage: cargo run -p codegen -- asm [--target <triple>]...";
+const USAGE: &str = "usage: cargo run -p codegen -- <command> [--target <triple>]...
+  asm [--raw]   write one listing per probe to target/codegen/<target>/, normalized unless --raw
+  stats         print per probe counts of branches, selects, memory accesses, barriers and calls";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -24,8 +31,12 @@ fn main() -> ExitCode {
 fn run(args: &[String]) -> Result<(), String> {
     match args.split_first() {
         Some((command, rest)) if command == "asm" => {
-            let targets = parse_targets(rest)?;
-            asm::run(&targets)
+            let options = Options::parse(rest, &["--raw"])?;
+            asm::run(&options.targets, options.has("--raw"))
+        }
+        Some((command, rest)) if command == "stats" => {
+            let options = Options::parse(rest, &[])?;
+            stats::run(&options.targets)
         }
         Some((flag, _)) if flag == "--help" || flag == "-h" => {
             println!("{USAGE}");
@@ -35,18 +46,35 @@ fn run(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Triples given by `--target` flags, in order
-fn parse_targets(args: &[String]) -> Result<Vec<String>, String> {
-    let mut targets = Vec::new();
-    let mut rest = args.iter();
-    while let Some(flag) = rest.next() {
-        if flag != "--target" {
-            return Err(format!("unexpected argument {flag:?}\n{USAGE}"));
+/// Targets and flags following a command
+struct Options {
+    targets: Vec<String>,
+    flags: Vec<String>,
+}
+
+impl Options {
+    /// Parses `--target <triple>` pairs and the flags in `allowed`, rejecting anything else
+    fn parse(args: &[String], allowed: &[&str]) -> Result<Self, String> {
+        let mut targets = Vec::new();
+        let mut flags = Vec::new();
+        let mut rest = args.iter();
+        while let Some(arg) = rest.next() {
+            if arg == "--target" {
+                let target = rest
+                    .next()
+                    .ok_or_else(|| format!("--target needs a triple\n{USAGE}"))?;
+                targets.push(target.clone());
+            } else if allowed.contains(&arg.as_str()) {
+                flags.push(arg.clone());
+            } else {
+                return Err(format!("unexpected argument {arg:?}\n{USAGE}"));
+            }
         }
-        let target = rest
-            .next()
-            .ok_or_else(|| format!("--target needs a triple\n{USAGE}"))?;
-        targets.push(target.clone());
+        Ok(Self { targets, flags })
     }
-    Ok(targets)
+
+    /// Whether `flag` was given
+    fn has(&self, flag: &str) -> bool {
+        self.flags.iter().any(|given| given == flag)
+    }
 }
