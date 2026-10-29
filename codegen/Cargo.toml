@@ -7,3 +7,5 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
+# defaults plus `perfect-hash`, the feature set of `cargo bench --features bench`, so probes see the code the benches measure
+veloce = { path = "..", features = ["perfect-hash"] }

@@ -21,7 +21,6 @@ mod spsc {
 mod swmr {
     #[cfg(feature = "async")]
     mod async_notify;
-    mod codegen;
     mod common;
     mod create;
     #[cfg(feature = "async")]
