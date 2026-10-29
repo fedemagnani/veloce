@@ -1,4 +1,4 @@
-//! Emission of a package's probe assembly, shared by every command
+//! Emission of a package's probe assembly, shared by every command: probes compile in a generated host crate
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,10 +7,11 @@ use std::time::SystemTime;
 
 use serde_json::Value;
 
+use crate::host;
 use crate::target::Target;
 
-/// `--cfg` the probes are compiled under when neither the command line nor the metadata names one
-pub const DEFAULT_CFG: &str = "codegen";
+/// Feature enabling the probes when neither the command line nor the metadata names one
+pub const DEFAULT_FEATURE: &str = "codegen";
 
 /// Target kinds that are not libraries, every other kind (`lib`, `rlib`, `cdylib`, ..) being one
 const NON_LIBRARY_KINDS: [&str; 5] = ["bin", "example", "test", "bench", "custom-build"];
@@ -19,30 +20,24 @@ const NON_LIBRARY_KINDS: [&str; 5] = ["bin", "example", "test", "bench", "custom
 #[derive(Default)]
 pub struct Request {
     pub package: Option<String>,
-    pub selection: Option<Selection>,
+    pub probes: Option<Vec<String>>,
     pub features: Option<Vec<String>>,
     pub no_default_features: bool,
-    pub cfg: Option<String>,
+    pub feature: Option<String>,
 }
 
-/// The target of a package holding the probes
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Selection {
-    Lib,
-    /// An example built as a library, `crate-type = ["lib"]`, so it needs no `main`
-    Example(String),
-}
-
-/// A package's probe target, resolved against `cargo metadata`
+/// A package's probes, resolved against `cargo metadata`
 pub struct Package {
     pub name: String,
-    selection: Selection,
-    /// Name of the probe target's crate, the stem of the assembly file rustc emits
-    crate_name: String,
+    /// Directory of the package's manifest, the host crate's path dependency
+    dir: PathBuf,
+    /// Crate name of the package's library, where its probe macros are exported
+    library: String,
+    probes: Vec<String>,
+    /// Features the package is built with, the probe feature included
     features: Vec<String>,
-    no_default_features: bool,
-    /// Passed to the probed crate alone as `--cfg`, so modules gated on it compile only for the tool
-    cfg: String,
+    default_features: bool,
+    /// Root of the package's workspace, whose `Cargo.lock` pins the host crate's dependencies
     workspace_root: PathBuf,
     target_dir: PathBuf,
 }
@@ -58,31 +53,30 @@ impl Package {
             .ok_or("cargo metadata listed no packages")?;
         let package = pick_package(packages, request.package.as_deref())?;
         let name = string_field(package, "name")?;
+        let manifest = path_field(package, "manifest_path")?;
+        let dir = manifest
+            .parent()
+            .ok_or_else(|| format!("manifest {} has no directory", manifest.display()))?
+            .to_path_buf();
+        let library = library_name(package, &name)?;
         let defaults = &package["metadata"]["codegen"];
-        let selection = selection(request, defaults, package, &name)?;
-        let crate_name = crate_name(package, &selection, &name)?;
-        let features = match &request.features {
-            Some(features) => features.clone(),
-            None => string_list(&defaults["features"]),
-        };
-        let no_default_features =
-            request.no_default_features || defaults["no-default-features"] == Value::Bool(true);
-        let cfg = request.cfg.clone();
-        let cfg = cfg.or_else(|| defaults["cfg"].as_str().map(str::to_string));
-        let cfg = cfg.unwrap_or_else(|| DEFAULT_CFG.to_string());
+        let probes = probes(request, defaults, &name)?;
+        let features = features(request, defaults);
+        let default_features =
+            !(request.no_default_features || defaults["no-default-features"] == Value::Bool(true));
         Ok(Self {
             name,
-            selection,
-            crate_name,
+            dir,
+            library,
+            probes,
             features,
-            no_default_features,
-            cfg,
+            default_features,
             workspace_root,
             target_dir,
         })
     }
 
-    /// Assembly of the probe target built for `target`
+    /// Assembly of the probes built for `target`
     pub fn assembly(&self, target: &Target) -> Result<String, String> {
         let path = self.emit(&target.triple)?;
         fs::read_to_string(&path).map_err(|error| format!("reading {}: {error}", path.display()))
@@ -98,27 +92,21 @@ impl Package {
         self.codegen_dir().join(&target.triple)
     }
 
-    /// Builds the probe target for `triple` with `--emit asm`, returning the emitted file
+    /// Writes the host crate, builds it for `triple` with `--emit asm` and returns the emitted file
     fn emit(&self, triple: &str) -> Result<PathBuf, String> {
+        let host_dir = self.write_host()?;
         // the cargo running this tool, so the toolchain stays the same
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
         let mut command = Command::new(&cargo);
-        command.current_dir(&self.workspace_root);
-        command.args(["rustc", "--quiet", "-p", &self.name]);
-        match &self.selection {
-            Selection::Lib => command.arg("--lib"),
-            Selection::Example(example) => command.args(["--example", example]),
-        };
+        // inside the probed workspace's target dir, so its `.cargo/config.toml` and toolchain file still apply
+        command.current_dir(&host_dir);
+        // the probed workspace's target dir, so its dependencies' builds are reused
+        command.env("CARGO_TARGET_DIR", &self.target_dir);
         // `release`, which `bench` inherits: `--profile bench` would build a bench harness needing a linker
-        command.args(["--release", "--target", triple]);
-        if !self.features.is_empty() {
-            command.args(["--features", &self.features.join(",")]);
-        }
-        if self.no_default_features {
-            command.arg("--no-default-features");
-        }
-        // after `--`, so only the probed crate sees the cfg and its dependencies build as usual
-        command.args(["--", "--cfg", &self.cfg, "--emit", "asm"]);
+        let args = ["rustc", "--quiet", "--lib", "--release", "--target", triple];
+        command.args(args);
+        // only the host crate is emitted, its dependencies build as usual
+        command.args(["--", "--emit", "asm"]);
         let status = command.status();
         let status = status.map_err(|error| format!("running {cargo}: {error}"))?;
         if !status.success() {
@@ -128,11 +116,37 @@ impl Package {
             ));
         }
         let release_dir = self.target_dir.join(triple).join("release");
-        let in_examples = matches!(self.selection, Selection::Example(_));
-        newest_listing(&release_dir, &self.crate_name, in_examples).ok_or_else(|| {
-            let dir = release_dir.display();
-            format!("no {}-*.s under {dir}", self.crate_name)
-        })
+        let crate_name = host::crate_name(&self.name);
+        newest_listing(&release_dir, &crate_name)
+            .ok_or_else(|| format!("no {crate_name}-*.s under {}", release_dir.display()))
+    }
+
+    /// Writes the host crate under `target/codegen/<package>/host`, its lock file seeded from the workspace's
+    fn write_host(&self) -> Result<PathBuf, String> {
+        let host_dir = self.codegen_dir().join("host");
+        fs::create_dir_all(&host_dir)
+            .map_err(|error| format!("creating {}: {error}", host_dir.display()))?;
+        let package_dir = self.dir.to_string_lossy();
+        let spec = host::Spec {
+            package: &self.name,
+            package_dir: &package_dir,
+            library: &self.library,
+            features: &self.features,
+            default_features: self.default_features,
+            probes: &self.probes,
+        };
+        let manifest = host::manifest(&spec);
+        let library = host::library(&spec);
+        write(&host_dir.join("Cargo.toml"), &manifest)?;
+        write(&host_dir.join("lib.rs"), &library)?;
+        // the workspace's versions, so the probes see the dependencies the package is really built with
+        let lock = self.workspace_root.join("Cargo.lock");
+        if lock.exists() {
+            let host_lock = host_dir.join("Cargo.lock");
+            fs::copy(&lock, &host_lock)
+                .map_err(|error| format!("copying {}: {error}", lock.display()))?;
+        }
+        Ok(host_dir)
     }
 }
 
@@ -200,37 +214,42 @@ fn pick_package<'a>(packages: &'a [Value], requested: Option<&str>) -> Result<&'
     })
 }
 
-/// The command line's target, else the metadata's `example` or `lib = true`, else the package's library
-fn selection(
-    request: &Request,
-    defaults: &Value,
-    package: &Value,
-    name: &str,
-) -> Result<Selection, String> {
-    if let Some(selection) = &request.selection {
-        return Ok(selection.clone());
-    }
-    if let Some(example) = defaults["example"].as_str() {
-        return Ok(Selection::Example(example.to_string()));
-    }
-    if defaults["lib"] == Value::Bool(true) || library_target(package).is_some() {
-        return Ok(Selection::Lib);
-    }
-    Err(format!(
-        "package {name} has no library: pass --example, or set `example` in [package.metadata.codegen]"
-    ))
+/// Crate name of the package's library, the only target a downstream crate can depend on
+fn library_name(package: &Value, name: &str) -> Result<String, String> {
+    let library = library_target(package).ok_or_else(|| {
+        format!("package {name} has no library, so no crate can expand its probes")
+    })?;
+    let library_name = string_field(library, "name")?;
+    Ok(library_name.replace('-', "_"))
 }
 
-/// Crate name of the selected target, checking the package has it
-fn crate_name(package: &Value, selection: &Selection, name: &str) -> Result<String, String> {
-    let target = match selection {
-        Selection::Lib => library_target(package)
-            .ok_or_else(|| format!("package {name} has no library target"))?,
-        Selection::Example(example) => example_target(package, example)
-            .ok_or_else(|| format!("package {name} has no example {example}"))?,
+/// The command line's probe macros, else the metadata's `probes`, failing when there are none
+fn probes(request: &Request, defaults: &Value, name: &str) -> Result<Vec<String>, String> {
+    let probes = match &request.probes {
+        Some(probes) => probes.clone(),
+        None => string_list(&defaults["probes"]),
     };
-    let target_name = string_field(target, "name")?;
-    Ok(target_name.replace('-', "_"))
+    if probes.is_empty() {
+        return Err(format!(
+            "package {name} lists no probe macros: set `probes = [..]` in [package.metadata.codegen], or pass --probes"
+        ));
+    }
+    Ok(probes)
+}
+
+/// The command line's features, else the metadata's, plus the feature enabling the probes
+fn features(request: &Request, defaults: &Value) -> Vec<String> {
+    let mut features = match &request.features {
+        Some(features) => features.clone(),
+        None => string_list(&defaults["features"]),
+    };
+    let feature = request.feature.clone();
+    let feature = feature.or_else(|| defaults["feature"].as_str().map(str::to_string));
+    let feature = feature.unwrap_or_else(|| DEFAULT_FEATURE.to_string());
+    if !features.contains(&feature) {
+        features.push(feature);
+    }
+    features
 }
 
 /// The package's library target
@@ -240,15 +259,6 @@ fn library_target(package: &Value) -> Option<&Value> {
         let kinds = string_list(&target["kind"]);
         let is_library = |kind: &String| !NON_LIBRARY_KINDS.contains(&kind.as_str());
         !kinds.is_empty() && kinds.iter().all(is_library)
-    })
-}
-
-/// The package's example `example`
-fn example_target<'a>(package: &'a Value, example: &str) -> Option<&'a Value> {
-    let targets = package["targets"].as_array()?;
-    targets.iter().find(|target| {
-        let kinds = string_list(&target["kind"]);
-        target["name"] == example && kinds.iter().any(|kind| kind == "example")
     })
 }
 
@@ -273,6 +283,10 @@ fn path_field(value: &Value, field: &str) -> Result<PathBuf, String> {
     string_field(value, field).map(PathBuf::from)
 }
 
+fn write(path: &Path, text: &str) -> Result<(), String> {
+    fs::write(path, text).map_err(|error| format!("writing {}: {error}", path.display()))
+}
+
 /// Host triple of the active toolchain
 fn host_triple() -> Result<String, String> {
     let version = rustc("-vV")?;
@@ -288,8 +302,8 @@ fn rustc(flag: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// Newest `<crate_name>-*.s` under `root`, inside or outside an `examples` directory, wherever the build layout puts it
-fn newest_listing(root: &Path, crate_name: &str, in_examples: bool) -> Option<PathBuf> {
+/// Newest `<crate_name>-*.s` under `root`, wherever the cargo version's build layout puts it
+fn newest_listing(root: &Path, crate_name: &str) -> Option<PathBuf> {
     let prefix = format!("{crate_name}-");
     let mut newest: Option<(SystemTime, PathBuf)> = None;
     let mut pending = vec![root.to_path_buf()];
@@ -305,13 +319,8 @@ fn newest_listing(root: &Path, crate_name: &str, in_examples: bool) -> Option<Pa
             }
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            // below `root` only, so a checkout under some `examples` directory doesn't count
-            let relative = path.strip_prefix(root).unwrap_or(&path);
-            let under_examples = relative
-                .components()
-                .any(|part| part.as_os_str() == "examples");
             let is_listing = name.starts_with(&prefix) && name.ends_with(".s");
-            if !is_listing || under_examples != in_examples {
+            if !is_listing {
                 continue;
             }
             let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified()) else {
@@ -341,60 +350,53 @@ mod test {
     }
 
     #[test]
-    fn selection_prefers_the_command_line_then_the_metadata_then_the_library() {
+    fn the_library_name_has_hyphens_replaced() {
         let targets = serde_json::json!([
-            { "name": "demo", "kind": ["lib"] },
-            { "name": "probes", "kind": ["example"] },
+            { "name": "my-crate", "kind": ["rlib", "cdylib"] },
+            { "name": "tool", "kind": ["bin"] },
         ]);
-        let with_example = package(targets.clone(), serde_json::json!({ "example": "probes" }));
-        let without = package(targets, Value::Null);
-        let given = Request {
-            selection: Some(Selection::Lib),
-            ..Request::default()
-        };
-        let none = Request::default();
-        let from_line = selection(
-            &given,
-            &with_example["metadata"]["codegen"],
-            &with_example,
-            "demo",
-        );
-        let from_metadata = selection(
-            &none,
-            &with_example["metadata"]["codegen"],
-            &with_example,
-            "demo",
-        );
-        let from_lib = selection(&none, &without["metadata"]["codegen"], &without, "demo");
-        assert_eq!(from_line, Ok(Selection::Lib));
-        assert_eq!(from_metadata, Ok(Selection::Example("probes".to_string())));
-        assert_eq!(from_lib, Ok(Selection::Lib));
+        let demo = package(targets, Value::Null);
+        let library = library_name(&demo, "demo");
+        assert_eq!(library, Ok("my_crate".to_string()));
     }
 
     #[test]
-    fn a_package_without_a_library_needs_an_example() {
+    fn a_package_without_a_library_has_no_probes() {
         let binary_only = package(
             serde_json::json!([{ "name": "tool", "kind": ["bin"] }]),
             Value::Null,
         );
-        let none = Request::default();
-        let picked = selection(&none, &Value::Null, &binary_only, "tool");
-        assert!(picked.unwrap_err().contains("has no library"));
+        let library = library_name(&binary_only, "demo");
+        assert!(library.unwrap_err().contains("has no library"));
     }
 
     #[test]
-    fn crate_names_come_from_the_target_with_hyphens_replaced() {
-        let targets = serde_json::json!([
-            { "name": "my-crate", "kind": ["rlib", "cdylib"] },
-            { "name": "my-probes", "kind": ["example"] },
-        ]);
-        let demo = package(targets, Value::Null);
-        let lib = crate_name(&demo, &Selection::Lib, "demo");
-        let example = crate_name(&demo, &Selection::Example("my-probes".to_string()), "demo");
-        let missing = crate_name(&demo, &Selection::Example("other".to_string()), "demo");
-        assert_eq!(lib, Ok("my_crate".to_string()));
-        assert_eq!(example, Ok("my_probes".to_string()));
-        assert!(missing.unwrap_err().contains("no example other"));
+    fn probes_come_from_the_command_line_else_the_metadata() {
+        let defaults = serde_json::json!({ "probes": ["listed"] });
+        let given = Request {
+            probes: Some(vec!["given".to_string()]),
+            ..Request::default()
+        };
+        let none = Request::default();
+        let from_line = probes(&given, &defaults, "demo");
+        let from_metadata = probes(&none, &defaults, "demo");
+        let missing = probes(&none, &Value::Null, "demo");
+        assert_eq!(from_line, Ok(vec!["given".to_string()]));
+        assert_eq!(from_metadata, Ok(vec!["listed".to_string()]));
+        assert!(missing.unwrap_err().contains("lists no probe macros"));
+    }
+
+    #[test]
+    fn the_probe_feature_is_always_enabled_once() {
+        let defaults = serde_json::json!({ "features": ["fast", "codegen"] });
+        let renamed = serde_json::json!({ "features": ["fast"], "feature": "probes" });
+        let none = Request::default();
+        let listed = features(&none, &defaults);
+        let named = features(&none, &renamed);
+        let default = features(&none, &Value::Null);
+        assert_eq!(listed, ["fast", "codegen"]);
+        assert_eq!(named, ["fast", "probes"]);
+        assert_eq!(default, ["codegen"]);
     }
 
     #[test]

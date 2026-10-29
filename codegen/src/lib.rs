@@ -30,7 +30,18 @@
 //! ## Writing probes
 //!
 //! - reach the crate through `$crate::`, which resolves to it wherever the probes are expanded
-//! - `fn` items become probes; other items, such as statics or macro invocations, are expanded as written
+//! - `fn` items become `pub` probes, `unsafe` and `extern` ones included; generic ones fail to compile
+//! - other items, such as statics or macro invocations, are expanded as written
+//!
+//! ```compile_fail
+//! codegen::probes!(generic_probes {
+//!     fn identity<T>(x: T) -> T {
+//!         x
+//!     }
+//! });
+//! generic_probes!();
+//! # fn main() {}
+//! ```
 //! - `#[cfg]` inside a block is evaluated in the expanding crate: gate the whole `probes!` invocation instead
 
 /// Defines the exported macro `$name!()`, expanding the probes in the crate that invokes it
@@ -52,15 +63,35 @@ macro_rules! probes {
 #[macro_export]
 macro_rules! __probe_items {
     () => {};
+    // `fn` items, whatever their visibility, `unsafe` or ABI, so none silently stays a plain item
+    ($(#[$attr:meta])* $vis:vis unsafe extern $abi:literal fn $($rest:tt)*) => {
+        $crate::__probe_items! { @fn [$(#[$attr])*] [unsafe extern $abi] fn $($rest)* }
+    };
+    ($(#[$attr:meta])* $vis:vis unsafe fn $($rest:tt)*) => {
+        $crate::__probe_items! { @fn [$(#[$attr])*] [unsafe] fn $($rest)* }
+    };
+    ($(#[$attr:meta])* $vis:vis extern $abi:literal fn $($rest:tt)*) => {
+        $crate::__probe_items! { @fn [$(#[$attr])*] [extern $abi] fn $($rest)* }
+    };
+    ($(#[$attr:meta])* $vis:vis fn $($rest:tt)*) => {
+        $crate::__probe_items! { @fn [$(#[$attr])*] [] fn $($rest)* }
+    };
+    (@fn [$($attr:tt)*] [$($qualifier:tt)*] fn $probe:ident < $($rest:tt)*) => {
+        ::core::compile_error!(::core::concat!(
+            "probe `",
+            ::core::stringify!($probe),
+            "` is generic, so it has no symbol: wrap one concrete instance instead",
+        ));
+    };
     (
-        $(#[$attr:meta])*
+        @fn [$($attr:tt)*] [$($qualifier:tt)*]
         fn $probe:ident ($($args:tt)*) $(-> $ret:ty)? $block:block
         $($rest:tt)*
     ) => {
-        $(#[$attr])*
+        $($attr)*
         #[unsafe(no_mangle)]
         #[inline(never)]
-        pub fn $probe($($args)*) $(-> $ret)? $block
+        pub $($qualifier)* fn $probe($($args)*) $(-> $ret)? $block
 
         $crate::__probe_items! { $($rest)* }
     };
@@ -92,6 +123,24 @@ mod test {
         }
 
         fn codegen_test_unit() {}
+
+        pub fn codegen_test_pub(x: u64) -> u64 {
+            x + 1
+        }
+
+        unsafe fn codegen_test_unsafe(x: *const u64) -> u64 {
+            // SAFETY: the caller passes a valid pointer
+            unsafe { *x }
+        }
+
+        extern "C" fn codegen_test_extern(x: u64) -> u64 {
+            x + 3
+        }
+
+        pub(crate) unsafe extern "C" fn codegen_test_unsafe_extern(x: *const u64) -> u64 {
+            // SAFETY: the caller passes a valid pointer
+            unsafe { *x + 4 }
+        }
     });
 
     // expanded here, as a downstream crate would: textual scope, macro-expanded exports having no absolute path
@@ -114,5 +163,29 @@ mod test {
         }
         let through_symbol = codegen_test_add_base(1);
         assert_eq!(through_symbol, 41);
+    }
+
+    #[test]
+    fn qualified_fns_are_probes_too() {
+        // each is reached through its plain C symbol, so each was marked `no_mangle`
+        unsafe extern "Rust" {
+            safe fn codegen_test_pub(x: u64) -> u64;
+            fn codegen_test_unsafe(x: *const u64) -> u64;
+        }
+        unsafe extern "C" {
+            safe fn codegen_test_extern(x: u64) -> u64;
+            fn codegen_test_unsafe_extern(x: *const u64) -> u64;
+        }
+        let value = 10;
+        let public = codegen_test_pub(1);
+        // SAFETY: `value` outlives both calls
+        let read = unsafe { codegen_test_unsafe(&value) };
+        let external = codegen_test_extern(1);
+        // SAFETY: `value` outlives the call
+        let read_external = unsafe { codegen_test_unsafe_extern(&value) };
+        assert_eq!(public, 2);
+        assert_eq!(read, 10);
+        assert_eq!(external, 4);
+        assert_eq!(read_external, 14);
     }
 }

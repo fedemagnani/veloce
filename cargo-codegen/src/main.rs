@@ -5,6 +5,7 @@
 mod asm;
 mod baseline;
 mod emit;
+mod host;
 mod isa;
 mod listing;
 mod normalize;
@@ -13,7 +14,7 @@ mod target;
 
 use std::process::ExitCode;
 
-use emit::{Package, Request, Selection};
+use emit::{Package, Request};
 
 /// Usage, shown on `--help` and on a malformed command line
 const USAGE: &str = "usage: cargo codegen <command> [build options] [--target <triple>]...
@@ -24,13 +25,13 @@ commands:
   diff [--baseline <name>]   compare fresh builds to a baseline, exiting 1 when a probe was added, removed or changed
 build options, each defaulting to [package.metadata.codegen] of the package:
   -p, --package <name>       package holding the probes, else the one containing the current directory
-  --lib | --example <name>   target holding the probes, else the metadata's `example`, else the package's library
+  --probes <list>            probe macros to expand, replacing the metadata's `probes`
   --features <list>          features to build with, replacing the metadata's `features`
   --no-default-features      build without the package's default features
-  --cfg <name>               cfg the probe modules are gated on, else the metadata's `cfg`, else `codegen`
+  --feature <name>           feature enabling the probes, else the metadata's `feature`, else `codegen`
 save and diff default to the targets the baseline holds, save to the host when it holds none";
 
-/// Options taking a value; `--target`, `--package`, `--example` and `--features` are parsed apart
+/// Options taking a value; the build options and `--target` are parsed apart
 const VALUE_OPTIONS: [&str; 1] = ["--baseline"];
 
 fn main() -> ExitCode {
@@ -111,11 +112,10 @@ impl Options {
             match arg.as_str() {
                 "--target" => options.targets.push(value()?),
                 "-p" | "--package" => options.request.package = Some(value()?),
-                "--lib" => options.select(Selection::Lib)?,
-                "--example" => options.select(Selection::Example(value()?))?,
+                "--probes" => options.request.probes = Some(list(&value()?)),
                 "--features" => options.add_features(&value()?),
                 "--no-default-features" => options.request.no_default_features = true,
-                "--cfg" => options.request.cfg = Some(value()?),
+                "--feature" => options.request.feature = Some(value()?),
                 option if allowed.contains(&option) && VALUE_OPTIONS.contains(&option) => {
                     options.values.push((arg.clone(), value()?));
                 }
@@ -126,20 +126,10 @@ impl Options {
         Ok(options)
     }
 
-    /// Sets the probe target, rejecting a second one
-    fn select(&mut self, selection: Selection) -> Result<(), String> {
-        if self.request.selection.is_some() {
-            return Err(format!("give one of --lib and --example\n{USAGE}"));
-        }
-        self.request.selection = Some(selection);
-        Ok(())
-    }
-
     /// Adds features separated by commas or spaces, as cargo accepts them
-    fn add_features(&mut self, list: &str) {
+    fn add_features(&mut self, given: &str) {
         let features = self.request.features.get_or_insert_with(Vec::new);
-        let given = list.split([',', ' ']).filter(|feature| !feature.is_empty());
-        features.extend(given.map(str::to_string));
+        features.extend(list(given));
     }
 
     /// Whether `flag` was given
@@ -157,4 +147,10 @@ impl Options {
         let name = given.map(|(_, value)| value.as_str());
         name.unwrap_or(baseline::DEFAULT_BASELINE)
     }
+}
+
+/// Items separated by commas or spaces, as cargo accepts feature lists
+fn list(text: &str) -> Vec<String> {
+    let items = text.split([',', ' ']).filter(|item| !item.is_empty());
+    items.map(str::to_string).collect()
 }
