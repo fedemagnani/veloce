@@ -2,6 +2,11 @@
 
 extern crate test;
 
+mod perfect_hash {
+    mod common;
+    mod lookup;
+}
+
 mod spsc {
     mod burst;
     mod create;
