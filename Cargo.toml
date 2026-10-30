@@ -29,6 +29,8 @@ async = ["dep:futures"]
 bench = ["spsc", "swmr", "perfect-hash"]
 # `bench` plus the perfect_hash key sets whose lookup path another set already covers
 bench-full = ["bench"]
+# criterion benches for local A/B comparisons, kept out of CI: `cargo bench --bench perfect_hash --features criterion`
+criterion = ["perfect-hash"]
 
 [dependencies]
 crossbeam-utils = { version = "0.8.21", optional = true }
@@ -61,6 +63,12 @@ required-features = ["swmr"]
 [[bench]]
 name = "main"
 required-features = ["bench"]
+
+[[bench]]
+name = "perfect_hash"
+path = "benches/perfect_hash/criterion.rs"
+harness = false
+required-features = ["criterion"]
 
 # what `cargo codegen` builds besides the default features, so every module's probes are in
 [package.metadata.codegen]

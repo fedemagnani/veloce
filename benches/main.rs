@@ -5,8 +5,10 @@ extern crate test;
 mod perfect_hash {
     mod common;
     #[macro_use]
+    #[path = "../../src/perfect_hash/keysets.rs"]
     mod keysets;
     mod lookup;
+    mod stream;
 }
 
 mod spsc {

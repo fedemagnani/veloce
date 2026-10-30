@@ -6,7 +6,8 @@ use std::collections::hash_map::RandomState;
 
 use test::Bencher;
 
-use super::common::{Mix, index_hashbrown, index_map, run};
+use super::common::{index_hashbrown, index_map, run};
+use super::stream::Mix;
 
 /// A module of benches per key set, each key mapped to its declaration index, `extra` sets only under `bench-full`
 macro_rules! keyset {

@@ -1,4 +1,4 @@
-// Upstream's key sets, shared by the perfect_hash benches and codegen probes so the two can't drift apart: no `//!`, as it's include!d
+// Upstream's key sets, shared by the perfect_hash benches and probes so none can drift: no `//!`, as it's included
 
 /// Calls `callback!` once with every set as `core|extra <name> { <key> => <index>, .. } misses [..]`, `extra` repeating a covered path
 macro_rules! keysets {

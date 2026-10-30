@@ -1,0 +1,11 @@
+# a package `tests/codegen.rs` runs cargo-codegen on, outside the workspace
+[package]
+name = "codegen-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+codegen = { path = "../../../codegen" }
+
+[workspace]

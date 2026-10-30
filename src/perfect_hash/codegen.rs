@@ -1,7 +1,7 @@
 //! Probes of the perfect_hash lookups for `cargo codegen`, one `get` per bench key set so every compare path has one
 
 // the key sets of the benches, so the probes cover exactly what the benches measure
-include!("../../benches/perfect_hash/keysets.rs");
+include!("keysets.rs");
 
 /// Collects a map and a `get` probe per key set, plus `contains` and `index_of` on `header`, into one probe block
 macro_rules! probe_keysets {
