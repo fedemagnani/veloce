@@ -42,8 +42,30 @@ macro_rules! lookup_benches {
 // after the macro it expands to, `macro_rules!` being scoped textually
 keysets!(lookup_benches);
 
-criterion_group!(benches, lookups);
+criterion_group! {
+    name = benches;
+    config = config();
+    targets = lookups
+}
 criterion_main!(benches);
+
+/// Criterion tuned for ~1 ns lookups, the bench thread kept off the efficiency cores
+fn config() -> Criterion {
+    pin_to_performance_cores();
+    // drift between runs reaches a few percent on idle machines: smaller changes read as noise
+    Criterion::default().noise_threshold(0.03)
+}
+
+/// Asks macOS to schedule this thread on performance cores, so samples don't mix core types
+fn pin_to_performance_cores() {
+    #[cfg(target_os = "macos")]
+    {
+        let class = libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE;
+        // SAFETY: sets the calling thread's own QoS class, no pointers involved
+        let status = unsafe { libc::pthread_set_qos_class_self_np(class, 0) };
+        assert_eq!(status, 0, "pthread_set_qos_class_self_np");
+    }
+}
 
 /// Times lookups cycling through the stream of `mix`, each hit's value stored as upstream does, after checking all
 fn bench_lookups(
