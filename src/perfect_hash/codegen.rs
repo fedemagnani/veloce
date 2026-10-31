@@ -3,21 +3,29 @@
 // the key sets of the benches, so the probes cover exactly what the benches measure
 include!("keysets.rs");
 
-/// Collects a map and a `get` probe per key set, plus `contains` and `index_of` on `header`, into one probe block
+/// One probe block with a map and a `get` probe per key set, then [`header_probes`] on every set
 macro_rules! probe_keysets {
-    (@probes [$($probes:tt)*]) => {
+    ($($tier:ident $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses $misses:tt)*) => {
         $crate::perfect_hash::__paste! {
-            ::codegen::probes!(perfect_hash_probes { $($probes)* });
-        }
-    };
-    (
-        @probes [$($probes:tt)*]
-        $tier:ident header { $($hit:literal => $value:literal),+ $(,)? } misses $misses:tt
-        $($rest:tt)*
-    ) => {
-        probe_keysets!(@probes [
-            $($probes)*
+            ::codegen::probes!(perfect_hash_probes {
+                $(
+                    $crate::perfect_map!(static [<$name:upper>]: i32 = { $($hit => $value),+ };);
 
+                    fn [<perfect_hash_get_ $name>](key: &str) -> Option<i32> {
+                        [<$name:upper>].get(key).copied()
+                    }
+                )*
+            });
+        }
+        $(header_probes!($name { $($hit => $value),+ });)*
+    };
+}
+
+/// A probe block with `contains` and `index_of` on the `header` set, nothing for the other sets
+macro_rules! header_probes {
+    (header { $($hit:literal => $value:literal),+ }) => {
+        ::codegen::probes!(perfect_hash_header_probes {
+            $crate::perfect_map!(static HEADER: i32 = { $($hit => $value),+ };);
             // `index_of` is only on sets, so it gets a set of the same keys
             $crate::perfect_set!(static HEADER_SET = [$($hit),+];);
 
@@ -28,29 +36,9 @@ macro_rules! probe_keysets {
             fn perfect_hash_index_of_header(key: &str) -> Option<usize> {
                 HEADER_SET.index_of(key)
             }
-        ] $tier @get header { $($hit => $value),+ } misses $misses $($rest)*);
+        });
     };
-    (@probes [$($probes:tt)*] $tier:ident $name:ident $hits:tt misses $misses:tt $($rest:tt)*) => {
-        probe_keysets!(@probes [$($probes)*] $tier @get $name $hits misses $misses $($rest)*);
-    };
-    (
-        @probes [$($probes:tt)*]
-        $tier:ident @get $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses $misses:tt
-        $($rest:tt)*
-    ) => {
-        probe_keysets!(@probes [
-            $($probes)*
-
-            $crate::perfect_map!(static [<$name:upper>]: i32 = { $($hit => $value),+ };);
-
-            fn [<perfect_hash_get_ $name>](key: &str) -> Option<i32> {
-                [<$name:upper>].get(key).copied()
-            }
-        ] $($rest)*);
-    };
-    ($($sets:tt)*) => {
-        probe_keysets!(@probes [] $($sets)*);
-    };
+    ($other:ident $hits:tt) => {};
 }
 
 // after the macros it expands to, `macro_rules!` being scoped textually

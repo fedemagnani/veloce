@@ -35,6 +35,8 @@ impl<T> Storable for UnsafeCell<MaybeUninit<T>> {
     }
 }
 
+// only the spsc channels store their slots in a ring
+#[cfg(feature = "spsc")]
 /// # Safety:
 ///
 /// RingBuffer doesn't have any implementation of [`Drop`]: it is responsibility of the
@@ -43,6 +45,7 @@ pub(crate) struct RingBuffer<T, const N: usize>([T; N])
 where
     T: Storable;
 
+#[cfg(feature = "spsc")]
 impl<T: Storable, const N: usize> From<[T; N]> for RingBuffer<T, N> {
     fn from(buffer: [T; N]) -> Self {
         assert!(Self::N_POWER_OF_2, "N must be power of 2");
@@ -51,6 +54,7 @@ impl<T: Storable, const N: usize> From<[T; N]> for RingBuffer<T, N> {
     }
 }
 
+#[cfg(feature = "spsc")]
 impl<T: Storable, const N: usize> RingBuffer<T, N> {
     const MODULO_MASK: usize = N - 1;
     const N_POWER_OF_2: bool = N.is_power_of_two();
@@ -95,6 +99,7 @@ impl<T: Storable, const N: usize> RingBuffer<T, N> {
     }
 }
 
+#[cfg(feature = "spsc")]
 impl<T, const N: usize> Default for RingBuffer<UnsafeCell<MaybeUninit<T>>, N> {
     fn default() -> Self {
         let buffer = [const { UnsafeCell::new(MaybeUninit::uninit()) }; N];
@@ -102,7 +107,7 @@ impl<T, const N: usize> Default for RingBuffer<UnsafeCell<MaybeUninit<T>>, N> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "spsc"))]
 mod ring_test {
     use super::*;
 

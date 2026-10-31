@@ -50,8 +50,9 @@
 //!
 //! ## Watching functions
 //!
-//! [`watch`] marks a function of the crate, any probe being free to inline it: `cargo codegen stats` then counts, per
-//! probe, the instructions coming from that function, the callees it inlines included. It leaves the code unchanged.
+//! [`watch`] marks a function of the crate that probes may inline, leaving its code unchanged.
+//!
+//! `cargo codegen stats` then counts, per probe, the instructions coming from it, the callees it inlines included.
 //!
 //! ```rust
 //! #[codegen::watch]

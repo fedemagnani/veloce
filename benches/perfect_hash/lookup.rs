@@ -11,28 +11,33 @@ use super::stream::Mix;
 
 /// A module of benches per key set, each key mapped to its declaration index, `extra` sets only under `bench-full`
 macro_rules! keyset {
-    () => {};
-    (core $name:ident $hits:tt misses $misses:tt $($rest:tt)*) => {
-        keyset!(@module $name $hits misses $misses);
-        keyset!($($rest)*);
+    ($($tier:ident $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses [$($miss:literal),+ $(,)?])*) => {
+        $(
+            tier! {
+                $tier mod $name {
+                    use super::*;
+
+                    const HITS: &[&str] = &[$($hit),+];
+                    const MISSES: &[&str] = &[$($miss),+];
+
+                    veloce::perfect_map!(static VELOCE: i32 = { $($hit => $value),+ };);
+                    static PHF: phf::Map<&'static str, i32> = phf::phf_map! { $($hit => $value),+ };
+
+                    bench_mixes!(hits: Hits, misses: Misses, mixed: Mixed);
+                }
+            }
+        )*
     };
-    (extra $name:ident $hits:tt misses $misses:tt $($rest:tt)*) => {
+}
+
+/// The item of a `core` set as is, of an `extra` set only under `bench-full`
+macro_rules! tier {
+    (core $item:item) => {
+        $item
+    };
+    (extra $item:item) => {
         #[cfg(feature = "bench-full")]
-        keyset!(@module $name $hits misses $misses);
-        keyset!($($rest)*);
-    };
-    (@module $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses [$($miss:literal),+ $(,)?]) => {
-        mod $name {
-            use super::*;
-
-            const HITS: &[&str] = &[$($hit),+];
-            const MISSES: &[&str] = &[$($miss),+];
-
-            veloce::perfect_map!(static VELOCE: i32 = { $($hit => $value),+ };);
-            static PHF: phf::Map<&'static str, i32> = phf::phf_map! { $($hit => $value),+ };
-
-            bench_mixes!(hits: Hits, misses: Misses, mixed: Mixed);
-        }
+        $item
     };
 }
 

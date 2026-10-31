@@ -346,8 +346,7 @@ impl Declaration {
     }
 }
 
-/// `<veloce::swmr::writer::Writer<u64>>::stage::<{closure}>` as `Writer<u64>::stage`: modules, turbofish and the
-/// brackets of an inherent impl dropped
+/// `<veloce::swmr::writer::Writer<u64>>::stage::<{closure}>` as `Writer<u64>::stage`, the module paths dropped
 fn short(path: &str) -> String {
     let unqualified = drop_qualifiers(path);
     let without_turbofish = drop_turbofish(&unqualified);
