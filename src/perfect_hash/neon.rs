@@ -61,9 +61,16 @@ pub(crate) fn compare_chunks<const W: usize>(key: &[u8], stored: &[u8; W]) -> bo
     if off <= BLOCK - W {
         return compare_chunks_direct(p, len, stored);
     }
+    compare_chunks_copied(key, stored)
+}
+
+/// A key too close to a block end, copied to a zeroed buffer: out of line, so the hot path keeps no stack frame
+#[cold]
+#[inline(never)]
+fn compare_chunks_copied<const W: usize>(key: &[u8], stored: &[u8; W]) -> bool {
     let mut buf = [0u8; W];
-    buf[..len].copy_from_slice(key);
-    compare_chunks_direct(buf.as_ptr(), len, stored)
+    buf[..key.len()].copy_from_slice(key);
+    compare_chunks_direct(buf.as_ptr(), key.len(), stored)
 }
 
 /// 16 bytes, the first `len` the key's: near a block end, the block's last 16 bytes shifted down by one TBL
