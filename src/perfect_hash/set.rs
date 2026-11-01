@@ -4,8 +4,14 @@ use super::generator::{
     FULLHASH_MODE, HD_HASH_2BYTE_FLAG, HD_MODE, LAST_CHAR, MAX_POSITIONS, MAX_TABLE_SIZE, Phf,
     fh_hash, hd_bucket_hash, hd_key_hash_2, hd_key_hash_4, padded_len, safe_byte,
 };
-#[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
-use super::neon;
+#[cfg(all(
+    any(
+        all(target_arch = "aarch64", target_feature = "neon"),
+        all(target_arch = "x86_64", target_feature = "sse2")
+    ),
+    not(miri)
+))]
+use super::simd;
 
 /// Position byte standing for the last byte of the key
 const POS_LAST_CHAR: u8 = 0xFF;
@@ -371,32 +377,62 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
         self.compare_long(probe, slot)
     }
 
-    #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
+    #[cfg(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    ))]
     #[inline(always)]
     fn compare_8(&self, probe: &[u8], slot: usize) -> bool {
-        neon::compare_8(probe, self.packed_keys[slot])
+        simd::compare_8(probe, self.packed_keys[slot])
     }
 
-    #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
+    #[cfg(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    ))]
     #[inline(always)]
     fn compare_16(&self, probe: &[u8], slot: usize) -> bool {
-        neon::compare_16(probe, &self.slot_key_data[slot])
+        simd::compare_16(probe, &self.slot_key_data[slot])
     }
 
-    #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
+    #[cfg(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    ))]
     #[inline(always)]
     fn compare_long(&self, probe: &[u8], slot: usize) -> bool {
-        neon::compare_chunks(probe, &self.slot_key_data[slot])
+        simd::compare_chunks(probe, &self.slot_key_data[slot])
     }
 
-    #[cfg(any(not(target_arch = "aarch64"), not(target_feature = "neon"), miri))]
+    #[cfg(not(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    )))]
     #[inline(always)]
     fn compare_8(&self, probe: &[u8], slot: usize) -> bool {
         Self::pack_input(probe) == self.packed_keys[slot]
     }
 
     /// Two packed words, branch-free
-    #[cfg(any(not(target_arch = "aarch64"), not(target_feature = "neon"), miri))]
+    #[cfg(not(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    )))]
     #[inline(always)]
     fn compare_16(&self, probe: &[u8], slot: usize) -> bool {
         let first = self.pack_first_8(probe);
@@ -411,7 +447,13 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
     }
 
     /// The first packed word, then every byte up to L, branch-free
-    #[cfg(any(not(target_arch = "aarch64"), not(target_feature = "neon"), miri))]
+    #[cfg(not(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    )))]
     #[inline(always)]
     fn compare_long(&self, probe: &[u8], slot: usize) -> bool {
         let stored = &self.slot_key_data[slot];
@@ -425,7 +467,13 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
     }
 
     /// First 8 probe bytes, one load when every key is at least that long
-    #[cfg(any(not(target_arch = "aarch64"), not(target_feature = "neon"), miri))]
+    #[cfg(not(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    )))]
     #[inline(always)]
     fn pack_first_8(&self, probe: &[u8]) -> u64 {
         match probe.first_chunk::<8>() {
@@ -435,7 +483,13 @@ impl<const N: usize, const T: usize, const L: usize, const W: usize> PerfectSet<
     }
 
     /// Up to 8 probe bytes, little-endian and zero-padded, without branches
-    #[cfg(any(not(target_arch = "aarch64"), not(target_feature = "neon"), miri))]
+    #[cfg(not(all(
+        any(
+            all(target_arch = "aarch64", target_feature = "neon"),
+            all(target_arch = "x86_64", target_feature = "sse2")
+        ),
+        not(miri)
+    )))]
     #[inline(always)]
     fn pack_input(probe: &[u8]) -> u64 {
         let mut packed = probe[0] as u64;

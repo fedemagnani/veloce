@@ -50,9 +50,14 @@
 mod codegen;
 mod generator;
 mod map;
-#[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
-mod neon;
+// one SIMD module per target, the same three compares each; other targets and Miri use scalar code
 mod set;
+#[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
+#[path = "neon.rs"]
+mod simd;
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
+#[path = "sse2.rs"]
+mod simd;
 #[cfg(test)]
 mod test;
 

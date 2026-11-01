@@ -510,11 +510,17 @@ mod generated {
     }
 }
 
-/// Loads near the end of a 4 KiB block, the case the page-safe NEON loads exist for
-#[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
-mod neon_loads {
-    use super::super::neon::compare_chunks;
-    use super::super::neon::test::load_chunk_16;
+/// Loads near the end of a 4 KiB block, the case the page-safe SIMD loads exist for
+#[cfg(all(
+    any(
+        all(target_arch = "aarch64", target_feature = "neon"),
+        all(target_arch = "x86_64", target_feature = "sse2")
+    ),
+    not(miri)
+))]
+mod simd_loads {
+    use super::super::simd::compare_chunks;
+    use super::super::simd::test::load_chunk_16;
 
     #[test]
     fn chunk_lanes_are_exact_around_a_block_boundary() {
