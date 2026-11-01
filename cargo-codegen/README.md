@@ -45,7 +45,20 @@ my_get > get       8       1     0       0     1      0     0        0     1    
 | --- | --- |
 | `asm` | writes each probe's listing to `target/codegen/` |
 | `stats` | counts branches, loads, stores, SIMD, barriers, calls, panics per probe and per watched function |
+| `stats --mca` | adds [llvm-mca](https://llvm.org/docs/CommandGuide/llvm-mca.html)'s estimates on the host CPU, or `--mcpu <cpu>` |
 | `save` | saves a baseline |
 | `diff` | compares to the baseline, exit 1 on drift |
 
 Add `--target <triple>` for other targets. Run `cargo codegen --help` for every option.
+
+## Reading `--mca`
+
+llvm-mca runs each probe body as a straight-line loop: it ignores which branches are taken and models no mispredicts.
+
+- `rthru`: cycles per call if only execution units limited it; the column that ranks probes best.
+- `cycles`: simulated cycles per call, inflated when a return value feeds the next call's arguments.
+- `deps%`, `press%`, `unit`: what stalled dispatch, and the busiest execution unit.
+- `critical`: instructions on the longest dependency chain.
+
+On veloce's perfect_hash lookups, `rthru` ranks hit paths as criterion measures them (Spearman 0.90), misses loosely, mixed streams not at all.
+Needs `brew install llvm`, or `LLVM_MCA` set to the binary.

@@ -23,6 +23,26 @@ fn stats_attribute_instructions_to_the_watched_function() {
     assert!(attributed, "{output}");
 }
 
+// `fixture_watched_sum` and `fixture_plain_sum` are identical, and LLVM keeps the DWARF of either
+#[test]
+fn stats_report_a_merged_probe_in_the_watched_table() {
+    let output = run("stats_merged", &["stats"]);
+    let merged = output.lines().find_map(|line| {
+        let (probe, details) = line.split_once(": ")?;
+        let merged = probe.ends_with("_sum") && details.starts_with("merged into");
+        merged.then_some(probe)
+    });
+    let merged =
+        merged.unwrap_or_else(|| panic!("the identical sum probes weren't merged\n{output}"));
+    let shared_rows = format!("{merged} (merged into ");
+    let reported = output.lines().any(|line| {
+        let unavailable = line.split_whitespace().next() == Some(merged)
+            && line.contains("attribution unavailable: merged into");
+        line.starts_with(&shared_rows) || unavailable
+    });
+    assert!(reported, "{output}");
+}
+
 // identical bodies may also be merged into one symbol, which the listings then share
 #[test]
 fn watching_a_function_leaves_its_code_unchanged() {

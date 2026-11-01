@@ -405,7 +405,7 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
 }
 
 /// Host triple of the active toolchain
-fn host_triple() -> Result<String, String> {
+pub fn host_triple() -> Result<String, String> {
     let version = rustc("-vV")?;
     let host = version.lines().find_map(|line| line.strip_prefix("host: "));
     host.map(str::to_string)

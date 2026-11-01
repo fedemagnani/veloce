@@ -261,6 +261,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "darwin-kperf-sys"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7eda1eced5ca0e851725cc387dbc6643de322a9042588550301c28934d58b57"
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1095,6 +1101,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "crossbeam-utils",
+ "darwin-kperf-sys",
  "flume",
  "futures",
  "hashbrown",

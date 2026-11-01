@@ -9,6 +9,7 @@ mod emit;
 mod host;
 mod isa;
 mod listing;
+mod mca;
 mod normalize;
 mod registry;
 mod stats;
@@ -22,7 +23,9 @@ use emit::{Package, Request};
 const USAGE: &str = "usage: cargo codegen <command> [build options] [--target <triple>]...
 commands:
   asm [--raw]                write one listing per probe to target/codegen/<package>/<target>/, normalized unless --raw
-  stats                      print per probe counts of branches, selects, memory accesses, barriers and calls
+  stats [--mca] [--mcpu <cpu>]
+                             print per probe counts of branches, selects, memory accesses, barriers and calls;
+                             --mca adds llvm-mca's cost estimates on <cpu>, the host CPU for the host target
   save [--baseline <name>]   save fresh builds as a baseline in target/codegen/<package>/baselines/, `base` by default
   diff [--baseline <name>]   compare fresh builds to a baseline, exiting 1 when a probe was added, removed or changed
 build options, each defaulting to [package.metadata.codegen] of the package:
@@ -33,7 +36,7 @@ build options, each defaulting to [package.metadata.codegen] of the package:
 save and diff default to the targets the baseline holds, save to the host when it holds none";
 
 /// Options taking a value; the build options and `--target` are parsed apart
-const VALUE_OPTIONS: [&str; 1] = ["--baseline"];
+const VALUE_OPTIONS: [&str; 2] = ["--baseline", "--mcpu"];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -61,9 +64,12 @@ fn run(args: &[String]) -> Result<(), String> {
             asm::run(&package, &options.targets, options.has("--raw"))
         }
         Some((command, rest)) if command == "stats" => {
-            let options = Options::parse(rest, &[])?;
+            let options = Options::parse(rest, &["--mca", "--mcpu"])?;
             let package = Package::resolve(&options.request)?;
-            stats::run(&package, &options.targets)
+            let mcpu = options.value("--mcpu");
+            // `--mcpu` alone asks for the estimates too
+            let mca = (options.has("--mca") || mcpu.is_some()).then_some(mcpu);
+            stats::run(&package, &options.targets, mca)
         }
         Some((command, rest)) if command == "save" => {
             let options = Options::parse(rest, &["--baseline"])?;
@@ -139,13 +145,14 @@ impl Options {
 
     /// The baseline named by the last `--baseline`, else the default one
     fn baseline(&self) -> &str {
-        let given = self
-            .values
-            .iter()
-            .rev()
-            .find(|(name, _)| name == "--baseline");
-        let name = given.map(|(_, value)| value.as_str());
+        let name = self.value("--baseline");
         name.unwrap_or(baseline::DEFAULT_BASELINE)
+    }
+
+    /// Value of the last `option` given
+    fn value(&self, option: &str) -> Option<&str> {
+        let given = self.values.iter().rev().find(|(name, _)| name == option);
+        given.map(|(_, value)| value.as_str())
     }
 }
 

@@ -56,6 +56,10 @@ ahash = "0.8.12"
 rustc-hash = "2.1.3"
 libc = "0.2"
 
+# hardware counters of the criterion bench's `--counters` mode, through Apple's private kperf framework
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+darwin-kperf-sys = "0.1.1"
+
 [[test]]
 name = "swmr_stress"
 required-features = ["swmr"]

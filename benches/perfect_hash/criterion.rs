@@ -1,13 +1,16 @@
 //! Criterion lookups over every upstream key set, for A/B comparisons with `--save-baseline` and `--baseline`
 //!
 //! `cargo bench --bench perfect_hash --features criterion`, on stable; kept out of CI, whose runners are too noisy.
+//! With `--counters`, prints hardware counters per lookup instead, as root on macOS: `just counters`.
 
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
+use criterion::{Bencher, Criterion, criterion_group};
 use stream::{Mix, stream};
 
+#[cfg(target_os = "macos")]
+mod counters;
 #[macro_use]
 #[path = "../../src/perfect_hash/keysets.rs"]
 mod keysets;
@@ -20,7 +23,7 @@ const MIXES: [(Mix, &str); 3] = [
     (Mix::Mixed, "mixed"),
 ];
 
-/// `lookups`, benching every key set the `keysets!` list holds over the three mixes
+/// `lookups` and `count_lookups`, over every key set the `keysets!` list holds and the three mixes
 macro_rules! lookup_benches {
     ($($tier:ident $name:ident { $($hit:literal => $value:literal),+ $(,)? } misses [$($miss:literal),+ $(,)?])*) => {
         /// A group per key set, a bench per mix
@@ -36,6 +39,20 @@ macro_rules! lookup_benches {
                 group.finish();
             })*
         }
+
+        /// A row of counters per key set and mix
+        #[cfg(target_os = "macos")]
+        fn count_lookups(counter: &counters::Counter) {
+            $({
+                const HITS: &[&str] = &[$($hit),+];
+                const MISSES: &[&str] = &[$($miss),+];
+                veloce::perfect_map!(static MAP: i32 = { $($hit => $value),+ };);
+                for (mix, label) in MIXES {
+                    let bench = format!("{}/{label}", stringify!($name));
+                    counter.count(&bench, mix, HITS, MISSES, |key| MAP.get(key).copied());
+                }
+            })*
+        }
     };
 }
 
@@ -47,7 +64,27 @@ criterion_group! {
     config = config();
     targets = lookups
 }
-criterion_main!(benches);
+
+/// Criterion's timings, or hardware counters with `--counters`
+fn main() {
+    if std::env::args().any(|arg| arg == "--counters") {
+        count();
+        return;
+    }
+    benches();
+    Criterion::default().configure_from_args().final_summary();
+}
+
+/// Prints counters per lookup for every key set and mix, the bench thread on performance cores as when timed
+fn count() {
+    #[cfg(target_os = "macos")]
+    {
+        pin_to_performance_cores();
+        counters::run(count_lookups);
+    }
+    #[cfg(not(target_os = "macos"))]
+    panic!("--counters reads Apple's kperf counters, macOS only");
+}
 
 /// Criterion tuned for ~1 ns lookups, the bench thread kept off the efficiency cores
 fn config() -> Criterion {
@@ -75,14 +112,7 @@ fn bench_lookups(
     misses: &[&'static str],
     lookup: impl Fn(&str) -> Option<i32>,
 ) {
-    for (i, key) in hits.iter().enumerate() {
-        let value = lookup(key);
-        assert_eq!(value, Some(i as i32), "{key:?}");
-    }
-    for key in misses {
-        let value = lookup(key);
-        assert_eq!(value, None, "{key:?}");
-    }
+    check_answers(hits, misses, &lookup);
     let stream = stream(mix, hits, misses);
     let mut results = vec![0; stream.len()];
     let mut next = 0;
@@ -93,6 +123,22 @@ fn bench_lookups(
         black_box(&results);
         elapsed
     });
+}
+
+/// Asserts every hit maps to its declaration index and every miss to nothing
+fn check_answers(
+    hits: &[&'static str],
+    misses: &[&'static str],
+    lookup: &impl Fn(&str) -> Option<i32>,
+) {
+    for (i, key) in hits.iter().enumerate() {
+        let value = lookup(key);
+        assert_eq!(value, Some(i as i32), "{key:?}");
+    }
+    for key in misses {
+        let value = lookup(key);
+        assert_eq!(value, None, "{key:?}");
+    }
 }
 
 /// `count` lookups from `next` on, wrapping around the stream, returning where the next run starts

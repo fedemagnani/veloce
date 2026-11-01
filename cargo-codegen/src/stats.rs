@@ -6,6 +6,7 @@ use crate::attribution::Inlines;
 use crate::emit::{self, Build, Package};
 use crate::isa::classify;
 use crate::listing::{Listing, Probe};
+use crate::mca;
 use crate::normalize::{Instruction, Line, layout, normalize};
 use crate::target::{Arch, Target};
 
@@ -28,8 +29,9 @@ pub const COLUMNS: [&str; 10] = [
     "instr", "branch", "jump", "select", "load", "store", "simd", "barrier", "call", "panic",
 ];
 
-/// Prints a table of every probe's stats per target, the host when none is given
-pub fn run(package: &Package, triples: &[String]) -> Result<(), String> {
+/// Prints a table of every probe's stats per target, the host when none is given, with llvm-mca's if `mca` holds
+pub fn run(package: &Package, triples: &[String], mca: Option<Option<&str>>) -> Result<(), String> {
+    let host = emit::host_triple()?;
     for target in emit::targets(triples)? {
         let build = package.build(&target)?;
         let listing = Listing::parse(&build.assembly, &target);
@@ -40,6 +42,10 @@ pub fn run(package: &Package, triples: &[String]) -> Result<(), String> {
         if !build.watches.is_empty() {
             let watched = watched_rows(&probes, &build, &target)?;
             print!("{}", watched_table(&watched));
+        }
+        if let Some(mcpu) = mca {
+            let is_host = target.triple == host;
+            print!("{}", mca::table(&probes, &target, mcpu, is_host)?);
         }
     }
     Ok(())
@@ -72,9 +78,30 @@ fn watched_rows(
         // a merged probe's symbol and DWARF are those of the body it shares
         let source = probe.merged_into.unwrap_or(probe.name);
         let shares = shares(&inlines, probe, source, build, target);
-        match shares {
-            Ok(shares) => rows.extend(shares),
-            Err(reason) => rows.push(WatchedRow::Unavailable {
+        match (shares, probe.merged_into) {
+            // the merged probe's own DWARF is gone, so whether it inlined a watched function is unknown
+            (Ok(shares), Some(other)) if shares.is_empty() => rows.push(WatchedRow::Unavailable {
+                probe: probe.name.to_string(),
+                reason: format!(
+                    "merged into {other}, whose debug info inlines no watched function"
+                ),
+            }),
+            (Ok(shares), merged_into) => {
+                let label = match merged_into {
+                    Some(other) => format!("{} (merged into {other})", probe.name),
+                    None => probe.name.to_string(),
+                };
+                rows.extend(
+                    shares
+                        .into_iter()
+                        .map(|(function, stats)| WatchedRow::Share {
+                            probe: label.clone(),
+                            function,
+                            stats,
+                        }),
+                );
+            }
+            (Err(reason), _) => rows.push(WatchedRow::Unavailable {
                 probe: probe.name.to_string(),
                 reason,
             }),
@@ -83,14 +110,14 @@ fn watched_rows(
     Ok(rows)
 }
 
-/// The share of each watched function inlined into `probe`, its instances merged
+/// The stats of each watched function inlined into `probe`, its instances merged
 fn shares(
     inlines: &Inlines<'_>,
     probe: &Probe<'_>,
     source: &str,
     build: &Build,
     target: &Target,
-) -> Result<Vec<WatchedRow>, String> {
+) -> Result<Vec<(String, Stats)>, String> {
     let watched = inlines.watched(source, &build.watches)?;
     if watched.is_empty() {
         return Ok(Vec::new());
@@ -108,11 +135,7 @@ fn shares(
     let rows = by_watch.into_values().map(|(function, ranges)| {
         let covered = |index: usize| ranges.iter().any(|range| range.contains(&offsets[index]));
         let stats = Stats::of_selected(&lines, covered, target.arch);
-        WatchedRow::Share {
-            probe: probe.name.to_string(),
-            function,
-            stats,
-        }
+        (function, stats)
     });
     Ok(rows.collect())
 }
