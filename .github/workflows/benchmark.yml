@@ -26,12 +26,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Stable builds the tooling, so nightly compiler regressions only affect the bench step
+      - uses: dtolnay/rust-toolchain@stable
+
       # Use nightly for libtest benchmarks (#![feature(test)])
       # Change to @stable if only using Criterion
       - uses: dtolnay/rust-toolchain@nightly
 
       - name: Install git-bench
         env:
+          RUSTUP_TOOLCHAIN: stable
           # Pin to a specific version for reproducibility
           # Check https://github.com/fedemagnani/git-bench/tags for available versions
           GIT_BENCH_VERSION: "v0.0.1-alpha.11"
