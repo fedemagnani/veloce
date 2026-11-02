@@ -8,11 +8,6 @@ categories = ["concurrency", "data-structures", "asynchronous"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fedemagnani/veloce"
 
-[workspace]
-members = ["codegen", "codegen-macros", "cargo-codegen"]
-# plain `cargo` commands at the root keep building and testing veloce alone
-default-members = ["."]
-
 [features]
 default = ["spsc", "swmr", "async"]
 # slot storage of the ring buffers, exposing the `Storable` trait
@@ -37,7 +32,7 @@ crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
 paste = { version = "1.0.15", optional = true }
 # probes and watched functions for `cargo codegen`: no-ops in every other build
-codegen = { path = "codegen" }
+codegen-probe = "0.1.0"
 
 [dev-dependencies]
 criterion = "0.8.1"
