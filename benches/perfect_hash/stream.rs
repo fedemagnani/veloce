@@ -1,7 +1,8 @@
-//! Query streams of the perfect_hash libtest and criterion benches, as upstream builds them
+//! Query streams of the perfect_hash libtest and criterion benches, as upstream builds them, only longer
 
-/// Queries per stream, as upstream
-const STREAM_LEN: usize = 200_000;
+/// Queries per stream, ten times upstream's 200 000: the branch predictor memorizes a stream replayed that short,
+/// hiding up to a fifth of a mixed stream's mispredicts
+const STREAM_LEN: usize = 2_000_000;
 /// Seed of every stream, as upstream
 const SEED: u64 = 42;
 

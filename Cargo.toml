@@ -31,8 +31,8 @@ criterion = ["perfect-hash"]
 crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
 paste = { version = "1.0.15", optional = true }
-# probes and watched functions for `cargo codegen`: no-ops in every other build
-codegen-probe = "0.1.0"
+
+codegen-probe = "0.1.2"
 
 [dev-dependencies]
 criterion = "0.8.1"

@@ -22,7 +22,7 @@ const EVENTS: [(&CStr, &str); 4] = [
     (c"BRANCH_MISPRED_NONSPEC", "mispred"),
 ];
 
-/// Counted passes over each 200 000-key stream, so the two reads' own cost vanishes
+/// Counted passes over each 2 000 000-key stream, so the two reads' own cost vanishes
 const PASSES: u64 = 5;
 
 /// Prints a row of counters per lookup for each bench `each` hands to the counter; needs root

@@ -154,15 +154,15 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "codegen-macros"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86a53b318f06ae0e21abf42491ef63f9609245bdd57ab936642d941aee1d5d1f"
+checksum = "d58a05678928c5b0830905f4e7e9449125980b340948eb203093a782d20a68e5"
 
 [[package]]
 name = "codegen-probe"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd544ab7d5d673059905d0c07d1f5a203e3f8e4f871320aabb02108c6d927cbb"
+checksum = "275c07eb913fba7c71e130d42b24a5489532181ac8a760f9c9a36447a404cfd3"
 dependencies = [
  "codegen-macros",
 ]
