@@ -9,15 +9,30 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/fedemagnani/veloce"
 
 [features]
-default = ["async"]
-async = ["futures"]
+default = ["spsc", "swmr", "async"]
+# slot storage of the ring buffers, exposing the `Storable` trait
+ring = []
+# lock-free bounded single-producer-single-consumer channels
+spsc = ["ring", "dep:crossbeam-utils", "dep:paste"]
+# single-writer-multi-reader register of the latest value
+swmr = ["dep:crossbeam-utils"]
+# compile-time perfect hash sets and maps
+perfect-hash = ["dep:paste"]
+# async waiting for the enabled primitives
+async = ["dep:futures"]
 # requires nightly: `cargo +nightly bench --features bench`
-bench = []
+bench = ["spsc", "swmr", "perfect-hash"]
+# `bench` plus the perfect_hash key sets whose lookup path another set already covers
+bench-full = ["bench"]
+# criterion benches for local A/B comparisons, kept out of CI: `cargo bench --bench perfect_hash --features criterion`
+criterion = ["perfect-hash"]
 
 [dependencies]
-crossbeam-utils = "0.8.21"
+crossbeam-utils = { version = "0.8.21", optional = true }
 futures = { version = "0.3.31", optional = true }
-paste = "1.0.15"
+paste = { version = "1.0.15", optional = true }
+
+codegen-probe = "0.1.2"
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -30,7 +45,30 @@ arc-swap = "1.9.2"
 left-right = "0.11.8"
 triple_buffer = "9.0.0"
 seqlock = "0.2.0"
+phf = { version = "0.14.0", features = ["macros"] }
+hashbrown = "0.17.1"
+ahash = "0.8.12"
+rustc-hash = "2.1.3"
+libc = "0.2"
+
+# hardware counters of the criterion bench's `--counters` mode, through Apple's private kperf framework
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+darwin-kperf-sys = "0.1.1"
+
+[[test]]
+name = "swmr_stress"
+required-features = ["swmr"]
 
 [[bench]]
 name = "main"
 required-features = ["bench"]
+
+[[bench]]
+name = "perfect_hash"
+path = "benches/perfect_hash/criterion.rs"
+harness = false
+required-features = ["criterion"]
+
+# what `cargo codegen` builds besides the default features, so every module's probes are in
+[package.metadata.codegen]
+features = ["perfect-hash"]

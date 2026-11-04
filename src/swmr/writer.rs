@@ -40,6 +40,7 @@ where
     }
 
     /// Like [`Writer::stage`], but the closure also receives the latest committed value
+    #[codegen::watch]
     pub fn stage_with_latest(&mut self, setter: impl FnOnce(&mut T, &T)) {
         let staged_idx = match self.staged_slot {
             Some(staged_idx) => staged_idx,
@@ -58,6 +59,7 @@ where
     }
 
     /// Updates the slot number containing the most recent data, notifying the readers
+    #[codegen::watch]
     pub fn commit(&mut self) -> Result<(), SwmrError> {
         if self.is_disconnected() {
             return Err(SwmrError::Disconnected);
