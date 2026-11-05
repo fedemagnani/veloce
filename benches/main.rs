@@ -2,6 +2,15 @@
 
 extern crate test;
 
+mod perfect_hash {
+    mod common;
+    #[macro_use]
+    #[path = "../../src/perfect_hash/keysets.rs"]
+    mod keysets;
+    mod lookup;
+    mod stream;
+}
+
 mod spsc {
     mod burst;
     mod create;
@@ -16,7 +25,6 @@ mod spsc {
 mod swmr {
     #[cfg(feature = "async")]
     mod async_notify;
-    mod codegen;
     mod common;
     mod create;
     #[cfg(feature = "async")]

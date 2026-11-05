@@ -10,6 +10,7 @@
 //! - [`lamport`] — Classic approach with shared atomic head/tail indices. It is extremely cheap to create
 //! - [`vyukov`] — Per-slot sequence stamps for reduced cache contention
 
+mod codegen;
 pub mod lamport;
 pub mod vyukov;
 
